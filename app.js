@@ -132,6 +132,41 @@ function legend(items) {
   return `<div class="legend">${items.map(([cls, label]) => `<span><i style="background:var(--${cls})"></i>${esc(label)}</span>`).join("")}</div>`;
 }
 
+const ICON = {
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  chart: '<path d="M4 19h16"/><path d="M5 15l4-5 4 3 6-7"/>',
+  alert: '<path d="M12 3 2.5 20h19z"/><path d="M12 10v4.5M12 17.5h.01"/>',
+  spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3"/>',
+  server: '<rect x="4" y="4" width="16" height="6.5" rx="2"/><rect x="4" y="13.5" width="16" height="6.5" rx="2"/>',
+  gauge: '<path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l4-4"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
+  desktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  chip: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 2.5v4M14.5 2.5v4M9.5 17.5v4M14.5 17.5v4M2.5 9.5h4M2.5 14.5h4M17.5 9.5h4M17.5 14.5h4"/>',
+};
+const ic = (name) => `<svg class="ic" viewBox="0 0 24 24">${ICON[name] || ""}</svg>`;
+
+function hourStrip(series, bucket, live) {
+  if (!series) return "";
+  const per = Math.round(3600 / (bucket || 300));
+  const last = lastIndex(series);
+  if (last < 0) return "";
+  const nowH = Math.floor(last / per);
+  const hours = [];
+  for (let h = 0; h <= nowH; h++) {
+    const vals = series.slice(h * per, (h + 1) * per).filter((v) => v != null);
+    if (!vals.length) continue;
+    hours.push({ h, v: h === nowH && live != null ? live : Math.max(...vals) });
+  }
+  const max = Math.max(...hours.map((x) => x.v), 1);
+  const min = Math.min(...hours.map((x) => x.v));
+  const pct = (v) => (max > min ? 18 + 82 * ((v - min) / (max - min)) : 100);
+  return `<div class="hours" id="hours">${hours.map((x) => `<div class="hour${x.h === nowH ? " now" : ""}">
+      <span class="h">${x.h === nowH ? "지금" : `${x.h}시`}</span>
+      <span class="b"><i style="height:${Math.round(pct(x.v))}%"></i></span>
+      <span class="v">${x.v >= 10000 ? (x.v / 1000).toFixed(1) + "k" : num(x.v)}</span></div>`).join("")}</div>`;
+}
+
 function renderSummary() {
   const now = state.now;
   if (!now) return `<div class="empty">데이터를 불러오는 중입니다</div>`;
@@ -146,7 +181,7 @@ function renderSummary() {
     const yv = i >= 0 ? ySeries[i] : null;
     if (yv) {
       const diff = (t.users || 0) - yv;
-      cmp = `<span class="${diff >= 0 ? "up" : "down"}">어제 이 시각 ${num(yv)} (${diff >= 0 ? "+" : ""}${num(diff)})</span>`;
+      cmp = `어제 이 시각 <span class="${diff >= 0 ? "up" : "down"}">${diff >= 0 ? "+" : ""}${num(diff)}</span>`;
     }
   }
   const mobile = t.mobile || 0;
@@ -165,27 +200,37 @@ function renderSummary() {
   const incidents = (now.incidents || []).map((x) => `<li><span class="muted">${hhmm(x.created)}</span>
       <span>${esc(x.conclusion || (x.status === "done" ? "결론 없음" : "분석 중"))}
       <span class="sub">${esc((x.subjects || []).map((s) => s.target).join(", "))}</span></span></li>`).join("");
+  const fpsPos = t.fps_min == null ? null : Math.max(0, Math.min(100, (t.fps_min / 150) * 100));
+  const tile = (icon, k, v, sub, extra = "") => `<div class="tile glass"><div class="k">${ic(icon)}${esc(k)}</div><div class="v">${v}</div>${extra}<div class="s">${sub}</div></div>`;
   return `
-    <div class="card">
-      <h3>총 접속자 <span class="tag t-${now.level}">${LEVEL_KO[now.level] || now.level || "-"}</span></h3>
-      <div class="big">${num(t.users)}</div>
-      <div class="sub">오늘 최고 ${num(t.peak)}${cmp ? ` · ${cmp}` : ""}</div>
-      ${tSeries ? chart([{ vals: ySeries || [], cls: "s2" }, { vals: tSeries, cls: "s1" }], { ticks: dayTicks(today) }) + legend([["c1", "오늘"], ["c2", "어제"]]) : ""}
-    </div>
-    <div class="card"><h3>경보 ${issues.length ? `(${issues.length})` : ""}</h3>
-      ${issues.length ? `<ul class="list">${issues.map((x) => `<li${x.svid != null ? ` data-svid="${x.svid}"` : ""}><span class="tag t-${x.lv}">${x.lv === "bad" ? "이상" : "주의"}</span><span>${esc(x.text)}</span></li>`).join("")}</ul>` : `<div class="sub">현재 경보 없음</div>`}
-    </div>
-    ${incidents ? `<div class="card"><h3>경보 분석 (최근 6시간)</h3><ul class="list">${incidents}</ul></div>` : ""}
-    <div class="card grid">
-      <div class="kv"><div class="k">서버</div><div class="v">${num(t.servers_on)} / ${num(t.servers)}</div></div>
-      <div class="kv"><div class="k">FPS 평균 · 최저</div><div class="v">${num(t.fps_avg, 1)} · ${num(t.fps_min, 1)}</div></div>
-      <div class="kv"><div class="k">모바일 (AOS · iOS)</div><div class="v">${num(mobile)} <span class="sub">(${num(t.aos)} · ${num(t.ios)})</span></div></div>
-      <div class="kv"><div class="k">그 외</div><div class="v">${num(other)}</div></div>
-      <div class="kv"><div class="k">DAU (마스터 기준일)</div><div class="v">${num(dauT)}</div></div>
-      <div class="kv"><div class="k">전일 DAU</div><div class="v">${num(dauY)}</div></div>
-      <div class="kv"><div class="k">장비</div><div class="v">${num(t.machines)} <span class="sub">주의 ${num(t.machines_warn)}</span></div></div>
-      <div class="kv"><div class="k">마스터</div><div class="v" style="font-size:14px">${esc((now.master || {}).version || "-")}</div></div>
+    <section class="hero">
+      <div class="place">POTC 라이브</div>
+      <div class="temp">${num(t.users)}</div>
+      <div class="cond">${LEVEL_KO[now.level] || "-"} · 서버 ${num(t.servers_on)}/${num(t.servers)}</div>
+      <div class="hl">최고 ${num(t.peak)}${cmp ? ` · ${cmp}` : ""}</div>
+    </section>
+    ${issues.length ? `<div class="card glass"><h3>${ic("alert")}경보<span class="right">${issues.length}건</span></h3><ul class="list">${issues.map((x) => `<li${x.svid != null ? ` data-svid="${x.svid}"` : ""}><span class="tag t-${x.lv}">${x.lv === "bad" ? "이상" : "주의"}</span><span>${esc(x.text)}</span></li>`).join("")}</ul></div>` : ""}
+    ${incidents ? `<div class="card glass"><h3>${ic("spark")}경보 분석<span class="right">최근 6시간</span></h3><ul class="list">${incidents}</ul></div>` : ""}
+    ${tSeries ? `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3>${issues.length ? "" : `<p class="note">현재 경보가 없습니다.</p>`}${hourStrip(tSeries, today.bucket, t.users)}</div>
+    <div class="card glass"><h3>${ic("chart")}오늘 접속자 추이</h3>${chart([{ vals: ySeries || [], cls: "s2" }, { vals: tSeries, cls: "s1" }], { ticks: dayTicks(today) })}${legend([["c1", "오늘"], ["c2", "어제"]])}</div>` : ""}
+    <div class="tiles">
+      ${tile("server", "서버", `${num(t.servers_on)}<span class="sub">/${num(t.servers)}</span>`, `주의 ${num(t.warn)} · 이상 ${num(t.bad)}`)}
+      ${tile("gauge", "FPS 평균", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`)}
+      ${tile("phone", "모바일", num(mobile), `AOS ${num(t.aos)} · iOS ${num(t.ios)}`)}
+      ${tile("desktop", "그 외", num(other), "모바일 외 접속")}
+      ${tile("calendar", "DAU", num(dauT), `전일 ${num(dauY)}`)}
+      ${tile("chip", "장비", num(t.machines), `주의 ${num(t.machines_warn)}`)}
     </div>`;
+}
+
+const SKY_TOP = { "ok-day": "#2a72cf", "ok-dusk": "#33407e", "ok-night": "#070f24", "warn-day": "#8a5a22", "warn-night": "#20160d",
+  "bad-day": "#1f2229", "bad-night": "#1f2229", "maint-day": "#231c48", "maint-night": "#231c48" };
+
+function skyOf(level) {
+  const h = new Date().getHours();
+  const part = h >= 7 && h < 17 ? "day" : h >= 17 && h < 19 ? "dusk" : "night";
+  const lv = ["warn", "bad", "maint"].includes(level) ? level : "ok";
+  return lv === "ok" ? `ok-${part}` : `${lv}-${part === "day" ? "day" : "night"}`;
 }
 
 function sortServers(list) {
@@ -225,8 +270,10 @@ function renderServers() {
         ${[["state", "상태순"], ["ccu", "접속자순"], ["fps", "FPS 낮은순"], ["num", "번호순"]].map(([v, l]) => `<option value="${v}"${state.sort === v ? " selected" : ""}>${l}</option>`).join("")}
       </select>
     </div>
-    <div class="card">${rows || `<div class="empty">해당 서버 없음</div>`}</div>`;
+    <div class="card glass">${rows || `<div class="empty">해당 서버 없음</div>`}</div>`;
 }
+
+const gb = (v) => (v == null ? "-" : `${v >= 0 ? "+" : ""}${num(v, 1)}GB`);
 
 function renderMachines() {
   const now = state.now;
@@ -242,7 +289,7 @@ function renderMachines() {
     }).join(" · ");
     const tr = mt[m.name];
     const flags = (m.flags || []).map((f) => `<span class="tag t-warn">${esc(MACHINE_FLAGS[f] || f)}</span>`).join(" ");
-    return `<div class="card">
+    return `<div class="card glass">
       <h3><span class="dot ${m.state === "off" ? "bad" : (m.flags || []).length ? "warn" : "ok"}" style="display:inline-block"></span> ${esc(m.name)} ${flags}</h3>
       <div class="grid3">
         <div class="kv"><div class="k">CPU</div><div class="v">${num(m.cpu, 0)}%</div><div class="bar"><span class="${cls(m.cpu)}" style="width:${m.cpu || 0}%"></span></div></div>
@@ -252,7 +299,7 @@ function renderMachines() {
       <div class="sub">메모리 ${num(used, 1)} / ${num(m.mem_total_gb, 0)}GB · 게임서버 ${(m.servers || []).length}개 · 에이전트 ${esc(m.version || "-")}</div>
       ${drives ? `<div class="sub">디스크 여유 ${drives}</div>` : ""}
       ${tr ? chart([{ vals: tr.mem || [], cls: "s1" }], { h: 60, zero: false }) +
-        `<div class="sub">24시간 메모리 · 1시간 ${tr.d1h == null ? "-" : (tr.d1h >= 0 ? "+" : "") + num(tr.d1h, 1)}GB · 24시간 ${tr.d24h == null ? "-" : (tr.d24h >= 0 ? "+" : "") + num(tr.d24h, 1)}GB${tr.slope6h != null ? ` · 기울기 ${num(tr.slope6h, 2)}GB/h` : ""}${tr.restart ? ` · 재시작 ${hhmm(tr.restart)}` : ""}</div>` : ""}
+        `<div class="sub">24시간 메모리 · 1시간 ${gb(tr.d1h)} · 24시간 ${gb(tr.d24h)}${tr.slope6h != null ? ` · 기울기 ${num(tr.slope6h, 2)}GB/h` : ""}${tr.restart ? ` · 재시작 ${hhmm(tr.restart)}` : ""}</div>` : ""}
     </div>`;
   }).join("");
   return cards || `<div class="empty">장비 정보 없음</div>`;
@@ -266,7 +313,7 @@ function renderEvents() {
       <div class="h"><span class="tag t-${e.sev === "err" ? "bad" : e.sev === "warn" ? "warn" : e.sev === "ok" ? "ok" : "maint"}">${SEV_KO[e.sev] || esc(e.sev)}</span>
       <span class="muted">${mdhm(e.ep)}</span><b>${esc(e.server)}</b></div>
       <div class="msg">${esc(e.msg)}</div></div>`).join("");
-  return `<div class="chips">${chips}</div><div class="card">${rows || `<div class="empty">이벤트 없음</div>`}</div>`;
+  return `<div class="chips">${chips}</div><div class="card glass">${rows || `<div class="empty">이벤트 없음</div>`}</div>`;
 }
 
 function renderDetail() {
@@ -290,10 +337,10 @@ function renderDetail() {
       legend([["c1", "FPS 평균"], ["c3", "FPS 최저"]]);
   }
   sheet.innerHTML = `
-    <header class="top"><button id="back" class="icon" aria-label="뒤로">&#8592;</button>
+    <header class="top"><button id="back" class="round glass" aria-label="뒤로"><svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
       <span class="dot ${lv}"></span><h1>${esc(s.name)}</h1></header>
     <main>
-      <div class="card grid">
+      <div class="card glass grid">
         <div class="kv"><div class="k">접속자 · 오늘 최고</div><div class="v">${num(s.ccu)} · ${num(s.peak)}</div></div>
         <div class="kv"><div class="k">FPS</div><div class="v">${num(s.fps, 1)}</div></div>
         <div class="kv"><div class="k">CPU (한 코어 기준)</div><div class="v">${s.cpu == null ? "-" : num(s.cpu, 0) + "%"}</div></div>
@@ -303,9 +350,9 @@ function renderDetail() {
         <div class="kv"><div class="k">상태</div><div class="v" style="font-size:14px">${esc(s.cond || "-")} · ${esc(serverIssues(s).join(", ") || LEVEL_KO[lv])}</div></div>
         <div class="kv"><div class="k">장비 · 종류</div><div class="v" style="font-size:14px">${esc(s.agent)} · ${esc(s.type)}</div></div>
       </div>
-      ${w ? `<div class="card"><h3>틱 구성 (틱당 ${num(w.ms, 2)}ms)</h3>${wusdBar(w)}
+      ${w ? `<div class="card glass"><h3>틱 구성 (틱당 ${num(w.ms, 2)}ms)</h3>${wusdBar(w)}
         <div class="legend"><span><i class="w-w"></i>W ${num(w.w, 1)}%</span><span><i class="w-u"></i>U ${num(w.u, 1)}%</span><span><i class="w-s"></i>S ${num(w.s, 1)}%</span><span><i class="w-d"></i>D ${num(w.d, 1)}%</span></div></div>` : ""}
-      <div class="card"><h3>오늘 (5분)</h3>
+      <div class="card glass"><h3>오늘 (5분)</h3>
         ${chart([{ vals: serverSeries(yest, svid, "users"), cls: "s2" }, { vals: serverSeries(today, svid, "users"), cls: "s1" }], { ticks: dayTicks(today) })}
         ${legend([["c1", "접속자 오늘"], ["c2", "어제"]])}
         ${chart([{ vals: serverSeries(today, svid, "fps_min"), cls: "s3" }, { vals: serverSeries(today, svid, "fps_avg"), cls: "s1" }], { ticks: dayTicks(today), zero: false })}
@@ -315,8 +362,8 @@ function renderDetail() {
         ${chart([{ vals: serverSeries(today, svid, "dba_wait_ms"), cls: "s3" }], { ticks: dayTicks(today) })}
         ${legend([["c3", "DB 대기 ms (최고)"]])}
       </div>
-      <div class="card"><h3>최근 30일 (1시간)</h3>${histHtml}</div>
-      <div class="card"><h3>최근 이벤트</h3>${((state.events && state.events.events) || []).filter((e) => String(e.svid) === String(svid)).slice(-20).reverse()
+      <div class="card glass"><h3>최근 30일 (1시간)</h3>${histHtml}</div>
+      <div class="card glass"><h3>최근 이벤트</h3>${((state.events && state.events.events) || []).filter((e) => String(e.svid) === String(svid)).slice(-20).reverse()
         .map((e) => `<div class="ev"><div class="h"><span class="muted">${mdhm(e.ep)}</span><span>${SEV_KO[e.sev] || esc(e.sev)}</span></div><div class="msg">${esc(e.msg)}</div></div>`).join("") || `<div class="sub">없음</div>`}</div>
     </main>`;
   sheet.hidden = false;
@@ -335,16 +382,27 @@ function closeDetail() {
   else { state.detail = null; $("sheet").hidden = true; }
 }
 
+const TITLES = { sum: "", srv: "서버", mach: "장비", ev: "이벤트" };
+
 function render() {
   const now = state.now;
-  $("lvl").className = `dot ${now ? now.level : ""}`;
+  const sky = skyOf(now && now.level);
+  if (document.documentElement.dataset.sky !== sky) {
+    document.documentElement.dataset.sky = sky;
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = SKY_TOP[sky] || "#2a72cf";
+  }
+  $("title").textContent = TITLES[state.tab];
   updateAge();
   const view = $("view");
   const html = { sum: renderSummary, srv: renderServers, mach: renderMachines, ev: renderEvents }[state.tab]();
   const focus = document.activeElement && document.activeElement.id === "q";
   const caret = focus ? document.activeElement.selectionStart : null;
+  const hoursX = $("hours") ? $("hours").scrollLeft : null;
   view.innerHTML = html;
   if (focus && $("q")) { $("q").focus(); try { $("q").setSelectionRange(caret, caret); } catch (e) { } }
+  const hs = $("hours");
+  if (hs) hs.scrollLeft = hoursX == null || hoursX >= hs.scrollWidth - hs.clientWidth - 60 ? hs.scrollWidth : hoursX;
   if (state.detail) renderDetail();
 }
 

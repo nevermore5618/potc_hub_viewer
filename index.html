@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="ko">
+<html lang="ko" data-sky="ok-day">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#0f1419">
+<meta name="theme-color" content="#2a72cf">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="POTC 라이브">
@@ -11,33 +11,36 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="stylesheet" href="styles.css?v=20261016a">
+<link rel="stylesheet" href="styles.css?v=20261016c">
 </head>
 <body>
 <header class="top">
-  <span id="lvl" class="dot"></span>
-  <h1>POTC 라이브</h1>
-  <span id="age" class="age"></span>
-  <button id="refresh" class="icon" aria-label="새로고침">&#8635;</button>
-  <button id="gear" class="icon" aria-label="설정">&#9881;</button>
+  <h1 id="title"></h1>
+  <div class="actions">
+    <span id="age" class="age glass"></span>
+    <button id="refresh" class="round glass" aria-label="새로고침"><svg class="ic" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button>
+    <button id="gear" class="round glass" aria-label="설정"><svg class="ic" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg></button>
+  </div>
 </header>
-<div id="banner" class="banner" hidden></div>
+<div id="banner" class="banner glass" hidden></div>
 <main id="view"></main>
-<nav class="tabs">
-  <button data-tab="sum" class="on">요약</button>
-  <button data-tab="srv">서버</button>
-  <button data-tab="mach">장비</button>
-  <button data-tab="ev">이벤트</button>
+<nav class="tabs glass">
+  <button data-tab="sum" class="on"><svg class="ic" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10v9.5h13V10"/></svg>요약</button>
+  <button data-tab="srv"><svg class="ic" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6.5" rx="2"/><rect x="4" y="13.5" width="16" height="6.5" rx="2"/><path d="M8 7.2h.01M8 16.7h.01"/></svg>서버</button>
+  <button data-tab="mach"><svg class="ic" viewBox="0 0 24 24"><rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 2.5v4M14.5 2.5v4M9.5 17.5v4M14.5 17.5v4M2.5 9.5h4M2.5 14.5h4M17.5 9.5h4M17.5 14.5h4"/></svg>장비</button>
+  <button data-tab="ev"><svg class="ic" viewBox="0 0 24 24"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.8 1.8H4.2z"/><path d="M10 21a2 2 0 0 0 4 0"/></svg>이벤트</button>
 </nav>
 <section id="sheet" class="sheet" hidden></section>
 <section id="login" class="login" hidden>
-  <h2>POTC 라이브</h2>
-  <p>데이터 저장소를 읽는 토큰을 입력하세요. 이 기기의 브라우저에만 저장됩니다.</p>
-  <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
-  <button id="tokSave" class="primary">저장</button>
-  <p id="tokMsg" class="err"></p>
+  <div class="box glass">
+    <h2>POTC 라이브</h2>
+    <p>데이터 저장소를 읽는 토큰을 입력하세요. 이 기기의 브라우저에만 저장됩니다.</p>
+    <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
+    <button id="tokSave" class="primary">저장</button>
+    <p id="tokMsg" class="err"></p>
+  </div>
 </section>
-<script src="config.js?v=20261016a"></script>
-<script src="app.js?v=20261016a"></script>
+<script src="config.js?v=20261016c"></script>
+<script src="app.js?v=20261016c"></script>
 </body>
 </html>
