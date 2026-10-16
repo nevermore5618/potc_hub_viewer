@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1419">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="POTC 라이브">
+<title>POTC 라이브</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css?v=20261016a">
+</head>
+<body>
+<header class="top">
+  <span id="lvl" class="dot"></span>
+  <h1>POTC 라이브</h1>
+  <span id="age" class="age"></span>
+  <button id="refresh" class="icon" aria-label="새로고침">&#8635;</button>
+  <button id="gear" class="icon" aria-label="설정">&#9881;</button>
+</header>
+<div id="banner" class="banner" hidden></div>
+<main id="view"></main>
+<nav class="tabs">
+  <button data-tab="sum" class="on">요약</button>
+  <button data-tab="srv">서버</button>
+  <button data-tab="mach">장비</button>
+  <button data-tab="ev">이벤트</button>
+</nav>
+<section id="sheet" class="sheet" hidden></section>
+<section id="login" class="login" hidden>
+  <h2>POTC 라이브</h2>
+  <p>데이터 저장소를 읽는 토큰을 입력하세요. 이 기기의 브라우저에만 저장됩니다.</p>
+  <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
+  <button id="tokSave" class="primary">저장</button>
+  <p id="tokMsg" class="err"></p>
+</section>
+<script src="config.js?v=20261016a"></script>
+<script src="app.js?v=20261016a"></script>
+</body>
+</html>
