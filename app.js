@@ -497,8 +497,34 @@ function bind() {
   window.addEventListener("pageshow", (e) => { if (e.persisted) tick(true); });
 }
 
+function diag() {
+  let box = $("diag");
+  if (!box) {
+    box = document.createElement("pre");
+    box.id = "diag";
+    box.style.cssText = "position:fixed;left:8px;right:8px;top:calc(8px + env(safe-area-inset-top));z-index:99;margin:0;padding:8px 10px;border-radius:10px;" +
+      "background:rgba(0,0,0,.8);color:#fff;font:11px/1.4 ui-monospace,Menlo,monospace;white-space:pre-wrap;pointer-events:none";
+    document.body.appendChild(box);
+  }
+  const de = document.documentElement, vv = window.visualViewport, W = de.clientWidth;
+  const cls = (e) => String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className || "").split(" ")[0];
+  const wide = [...document.querySelectorAll("body *")]
+    .filter((e) => e.id !== "diag" && !e.closest("#diag") && !(e.closest(".hours") && !e.classList.contains("hours")))
+    .map((e) => [e, e.getBoundingClientRect()])
+    .filter(([, r]) => r.width > 0 && r.height > 0 && (r.right > W + 0.5 || r.left < -0.5))
+    .sort((a, b) => b[1].right - a[1].right).slice(0, 8)
+    .map(([e, r]) => `${e.tagName.toLowerCase()}${e.id ? "#" + e.id : ""}.${cls(e)} ${Math.round(r.left)}..${Math.round(r.right)} w${Math.round(r.width)}`);
+  box.textContent = [
+    `screen ${screen.width} inner ${innerWidth} client ${W} scroll ${de.scrollWidth} body ${document.body.scrollWidth}`,
+    `vv ${vv ? `${Math.round(vv.width)} scale ${vv.scale.toFixed(3)} left ${Math.round(vv.offsetLeft)}` : "-"} dpr ${devicePixelRatio} scrollX ${Math.round(scrollX)}`,
+    `${navigator.userAgent.replace(/^.*?\(([^)]*)\).*$/, "$1")}`,
+    ...(wide.length ? wide : ["no element outside client width"]),
+  ].join("\n");
+}
+
 function start() {
   bind();
+  if (/[?&]diag\b/.test(location.search)) { setInterval(diag, 1000); window.addEventListener("scroll", diag, { passive: true }); }
   if (!CFG.owner || !CFG.repo) { showLogin("뷰어 설정(config.js)이 없습니다."); return; }
   try { const c = recall(CACHE_KEY); if (c) state.now = JSON.parse(c); } catch (e) { }
   render();
