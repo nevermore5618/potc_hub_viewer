@@ -17,7 +17,7 @@ const SEV_KO = { err: "오류", warn: "경고", ok: "복구", info: "정보" };
 const state = {
   now: null, trend: null, mtrend: null, events: null, hist: null,
   at: { now: 0, trend: 0, mtrend: 0, events: 0, hist: 0 },
-  tab: "sum", sort: "state", q: "", evf: "all", detail: null, err: null, rlUntil: 0, busy: false, scrub: null, pendingRender: false,
+  tab: "sum", sort: "state", q: "", evf: "all", detail: null, err: null, rlUntil: 0, busy: false, scrub: null, pendingRender: false, pin: null, down: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -141,14 +141,53 @@ const CHARTS = new Map();
 
 const slotTime = (bucket) => (i) => { const m = Math.round((i * (bucket || 300)) / 60); return `${pad(Math.floor(m / 60) % 24)}:${pad(m % 60)}`; };
 
+function wrapRef(wrap) {
+  const area = wrap.closest("#sheet") ? "sheet" : "view";
+  const all = [...document.querySelectorAll(`#${area} .chartwrap`)];
+  return { area, idx: all.indexOf(wrap), ctx: area === "sheet" ? `d${state.detail}` : state.tab };
+}
+
+function pinnedWrap() {
+  const p = state.pin;
+  if (!p || p.ctx !== (p.area === "sheet" ? `d${state.detail}` : state.tab)) return null;
+  return document.querySelectorAll(`#${p.area} .chartwrap`)[p.idx] || null;
+}
+
+function hideAt(wrap) {
+  const g = wrap && wrap.querySelector(".scrub");
+  if (g) g.setAttribute("visibility", "hidden");
+  const ro = wrap && wrap.querySelector(".readout");
+  if (ro) ro.classList.remove("on");
+}
+
+function clearPin() {
+  hideAt(pinnedWrap());
+  state.pin = null;
+}
+
+function applyPin() {
+  const wrap = pinnedWrap();
+  const c = wrap && CHARTS.get(Number(wrap.dataset.cid));
+  if (c) showAt(wrap, Math.min(state.pin.i, c.n - 1));
+}
+
 function scrubAt(wrap, clientX) {
   const c = CHARTS.get(Number(wrap.dataset.cid));
   if (!c) return;
-  const svg = wrap.querySelector("svg");
-  const rect = svg.getBoundingClientRect();
+  const rect = wrap.querySelector("svg").getBoundingClientRect();
   const vx = ((clientX - rect.left) / rect.width) * 300;
   let i = Math.round(((vx - c.x(0)) / (c.x(c.n - 1) - c.x(0) || 1)) * (c.n - 1));
   i = Math.max(0, Math.min(c.n - 1, i));
+  const prev = pinnedWrap();
+  if (prev && prev !== wrap) hideAt(prev);
+  state.pin = { ...wrapRef(wrap), i };
+  showAt(wrap, i);
+}
+
+function showAt(wrap, i) {
+  const c = CHARTS.get(Number(wrap.dataset.cid));
+  if (!c) return;
+  const svg = wrap.querySelector("svg");
   const g = svg.querySelector(".scrub");
   g.setAttribute("visibility", "visible");
   const line = g.querySelector(".sline");
@@ -168,15 +207,12 @@ function scrubAt(wrap, clientX) {
   ro.classList.add("on");
 }
 
-function scrubEnd() {
-  const wrap = state.scrub;
+function scrubEnd(e) {
+  const down = state.down;
+  state.down = null;
+  if (!state.scrub && down && e && e.type === "pointerup" && !down.onChart &&
+      Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8) clearPin();
   state.scrub = null;
-  if (wrap) {
-    const g = wrap.querySelector(".scrub");
-    if (g) g.setAttribute("visibility", "hidden");
-    const ro = wrap.querySelector(".readout");
-    if (ro) ro.classList.remove("on");
-  }
   if (state.pendingRender) { state.pendingRender = false; render(); }
 }
 
@@ -449,6 +485,7 @@ function renderDetail() {
     </main>`;
   sheet.hidden = false;
   $("back").onclick = closeDetail;
+  applyPin();
 }
 
 function openDetail(svid) {
@@ -487,6 +524,7 @@ function render() {
   const hs = $("hours");
   if (hs) hs.scrollLeft = hoursX == null || hoursX >= hs.scrollWidth - hs.clientWidth - 60 ? hs.scrollWidth : hoursX;
   if (state.detail) renderDetail();
+  applyPin();
 }
 
 function updateAge() {
@@ -584,6 +622,7 @@ function bind() {
   };
   document.addEventListener("pointerdown", (e) => {
     const wrap = e.target.closest(".chartwrap");
+    state.down = { x: e.clientX, y: e.clientY, onChart: !!wrap };
     if (!wrap) return;
     state.scrub = wrap;
     scrubAt(wrap, e.clientX);
