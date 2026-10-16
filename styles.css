@@ -97,6 +97,12 @@ main { padding: 8px 16px 0; }
 .tile .k { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .tile .v { font-size: 34px; font-weight: 400; margin-top: 6px; letter-spacing: -0.5px; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .tile .s { margin-top: auto; font-size: 13px; color: var(--fg); }
+.tile.rank ul { list-style: none; margin: 8px 0 0; padding: 0; }
+.tile.rank li { display: flex; align-items: baseline; gap: 6px; padding: 5px 0; border-top: 1px solid var(--line); cursor: pointer; min-width: 0; }
+.tile.rank li:first-child { border-top: 0; }
+.tile.rank .rn { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tile.rank .rs { font-size: 11px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile.rank b { margin-left: auto; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tile .meter { height: 5px; border-radius: 3px; margin: 10px 0 8px; background: linear-gradient(90deg, #ff8a80, #ffd36b 45%, #8ff0b4 75%); position: relative; }
 .tile .meter i { position: absolute; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid rgba(0, 0, 0, 0.25); transform: translateX(-50%); }
 
@@ -195,4 +201,6 @@ main { padding: 8px 16px 0; }
 .login input { width: 100%; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--glass-edge); background: rgba(0, 0, 0, 0.18); color: var(--fg); margin-bottom: 12px; }
 .primary { width: 100%; padding: 12px; border: 0; border-radius: 14px; background: #fff; color: #1b2a44; font-weight: 700; font-size: 16px; cursor: pointer; }
 .err { color: var(--bad); font-size: 14px; margin-top: 12px; min-height: 1em; }
+.foot { text-align: center; padding: 8px 0 4px; }
+.foot .link { background: none; border: 0; padding: 6px 10px; cursor: pointer; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .empty { color: var(--muted); text-align: center; padding: 34px 0; }

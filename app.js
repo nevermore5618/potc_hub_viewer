@@ -196,9 +196,7 @@ const ICON = {
   spark: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3"/>',
   server: '<rect x="4" y="4" width="16" height="6.5" rx="2"/><rect x="4" y="13.5" width="16" height="6.5" rx="2"/>',
   gauge: '<path d="M4.5 17a8 8 0 1 1 15 0"/><path d="M12 13l4-4"/>',
-  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/>',
-  desktop: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
-  calendar: '<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+  db: '<ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v13c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-13"/><path d="M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5"/>',
   chip: '<rect x="6.5" y="6.5" width="11" height="11" rx="2"/><path d="M9.5 2.5v4M14.5 2.5v4M9.5 17.5v4M14.5 17.5v4M2.5 9.5h4M2.5 14.5h4M17.5 9.5h4M17.5 14.5h4"/>',
 };
 const ic = (name) => `<svg class="ic" viewBox="0 0 24 24">${ICON[name] || ""}</svg>`;
@@ -224,6 +222,21 @@ function hourStrip(series, bucket, live) {
       <span class="v">${x.v >= 10000 ? (x.v / 1000).toFixed(1) + "k" : num(x.v)}</span></div>`).join("")}</div>`;
 }
 
+function lastOf(trend, svid, field) {
+  const s = trend && trend.servers && trend.servers[svid];
+  const vals = s && s[field];
+  if (!vals) return null;
+  for (let i = vals.length - 1; i >= 0; i--) if (vals[i] != null) return vals[i];
+  return null;
+}
+
+function rankTile(icon, title, list, pick, digits, order, unit) {
+  const rows = list.map((s) => ({ s, v: pick(s) })).filter((x) => x.v != null)
+    .sort((a, b) => (order === "asc" ? a.v - b.v : b.v - a.v)).slice(0, 3);
+  const items = rows.map((x) => `<li data-svid="${x.s.svid}"><span class="rn">${esc(x.s.svid)}</span><span class="rs">${esc(x.s.agent || "")}</span><b>${num(x.v, digits)}${unit}</b></li>`).join("");
+  return `<div class="tile glass rank"><div class="k">${ic(icon)}${esc(title)}</div><ul>${items || `<li class="muted">기록 없음</li>`}</ul></div>`;
+}
+
 function renderSummary() {
   const now = state.now;
   if (!now) return `<div class="empty">데이터를 불러오는 중입니다</div>`;
@@ -241,11 +254,9 @@ function renderSummary() {
       cmp = `어제 이 시각 <span class="${diff >= 0 ? "up" : "down"}">${diff >= 0 ? "+" : ""}${num(diff)}</span>`;
     }
   }
-  const mobile = t.mobile || 0;
-  const other = t.users != null ? Math.max(0, t.users - mobile) : null;
-  const dauKeys = Object.keys(now.dau || {}).sort();
-  const dauT = dauKeys.length ? now.dau[dauKeys[dauKeys.length - 1]] : null;
-  const dauY = dauKeys.length > 1 ? now.dau[dauKeys[dauKeys.length - 2]] : null;
+  const gs = (now.servers || []).filter((s) => s.type === "GS" && s.state === "on" && !MAINT.has(s.cond));
+  const memTop = (now.machines || []).map((m) => ({ name: m.name, pct: m.mem_total_gb && m.mem_free_gb != null ? ((m.mem_total_gb - m.mem_free_gb) / m.mem_total_gb) * 100 : null }))
+    .filter((m) => m.pct != null).sort((a, b) => b.pct - a.pct)[0];
   const issues = [];
   for (const s of now.servers || []) {
     const lv = serverLevel(s);
@@ -269,15 +280,16 @@ function renderSummary() {
     ${issues.length ? `<div class="card glass"><h3>${ic("alert")}경보<span class="right">${issues.length}건</span></h3><ul class="list">${issues.map((x) => `<li${x.svid != null ? ` data-svid="${x.svid}"` : ""}><span class="tag t-${x.lv}">${x.lv === "bad" ? "이상" : "주의"}</span><span>${esc(x.text)}</span></li>`).join("")}</ul></div>` : ""}
     ${incidents ? `<div class="card glass"><h3>${ic("spark")}경보 분석<span class="right">최근 6시간</span></h3><ul class="list">${incidents}</ul></div>` : ""}
     ${tSeries ? `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3>${issues.length ? "" : `<p class="note">현재 경보가 없습니다.</p>`}${hourStrip(tSeries, today.bucket, t.users)}</div>
-    <div class="card glass"><h3>${ic("chart")}오늘 접속자 추이</h3>${chart([{ vals: ySeries || [], cls: "s2", name: "어제" }, { vals: tSeries, cls: "s1", name: "오늘" }], { ticks: dayTicks(today), time: slotTime(today.bucket), unit: "명" })}${legend([["c1", "오늘"], ["c2", "어제"]])}</div>` : ""}
+    <div class="card glass"><h3>${ic("chart")}오늘 접속자 추이</h3>${chart([{ vals: ySeries || [], cls: "s2", name: "어제" }, { vals: tSeries, cls: "s1", name: "오늘" }], { ticks: dayTicks(today), time: slotTime(today.bucket), unit: "명" })}${legend([["c1", "오늘"], ["c2", "어제"]])}</div>` : `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3><p class="note">추이를 불러오는 중입니다. 수집기를 다시 시작한 직후라면 몇 분 걸립니다.</p></div>`}
     <div class="tiles">
       ${tile("server", "서버", `${num(t.servers_on)}<span class="sub">/${num(t.servers)}</span>`, `주의 ${num(t.warn)} · 이상 ${num(t.bad)}`)}
       ${tile("gauge", "FPS 평균", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`)}
-      ${tile("phone", "모바일", num(mobile), `AOS ${num(t.aos)} · iOS ${num(t.ios)}`)}
-      ${tile("desktop", "그 외", num(other), "모바일 외 접속")}
-      ${tile("calendar", "DAU", num(dauT), `전일 ${num(dauY)}`)}
-      ${tile("chip", "장비", num(t.machines), `주의 ${num(t.machines_warn)}`)}
-    </div>`;
+      ${rankTile("gauge", "FPS 낮은 서버", gs, (s) => s.fps, 1, "asc", "")}
+      ${rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%")}
+      ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
+      ${tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`)}
+    </div>
+    <div class="foot"><button class="link" data-act="forget">이 기기에서 토큰 지우기</button></div>`;
 }
 
 const SKY_TOP = { "ok-day": "#2a72cf", "ok-dusk": "#33407e", "ok-night": "#070f24", "warn-day": "#8a5a22", "warn-night": "#20160d",
@@ -413,9 +425,11 @@ function renderDetail() {
         <div class="kv"><div class="k">CPU (한 코어 기준)</div><div class="v">${s.cpu == null ? "-" : num(s.cpu, 0) + "%"}</div></div>
         <div class="kv"><div class="k">메모리</div><div class="v">${s.mem_mb == null ? "-" : num(s.mem_mb / 1024, 1) + "GB"}</div></div>
         <div class="kv"><div class="k">처리 대기</div><div class="v">${num(s.wait)}</div></div>
-        <div class="kv"><div class="k">모바일 (AOS · iOS)</div><div class="v">${num(s.mobile)} <span class="sub">(${num(s.aos)} · ${num(s.ios)})</span></div></div>
+        <div class="kv"><div class="k">연결</div><div class="v">${num(s.conn)}</div></div>
         <div class="kv"><div class="k">상태</div><div class="v" style="font-size:14px">${esc(s.cond || "-")} · ${esc(serverIssues(s).join(", ") || LEVEL_KO[lv])}</div></div>
         <div class="kv"><div class="k">장비 · 종류</div><div class="v" style="font-size:14px">${esc(s.agent)} · ${esc(s.type)}</div></div>
+        <div class="kv"><div class="k">빌드</div><div class="v" style="font-size:14px">${esc(s.build || "-")}</div></div>
+        <div class="kv"><div class="k">시작</div><div class="v" style="font-size:14px">${esc(s.start || "-")}</div></div>
       </div>
       ${w ? `<div class="card glass"><h3>틱 구성 (틱당 ${num(w.ms, 2)}ms)</h3>${wusdBar(w)}
         <div class="legend"><span><i class="w-w"></i>W ${num(w.w, 1)}%</span><span><i class="w-u"></i>U ${num(w.u, 1)}%</span><span><i class="w-s"></i>S ${num(w.s, 1)}%</span><span><i class="w-d"></i>D ${num(w.d, 1)}%</span></div></div>` : ""}
@@ -505,7 +519,10 @@ async function tick(force) {
   const t = Date.now();
   try {
     const jobs = [fetchFile("now", "now.json").then((d) => store(CACHE_KEY, JSON.stringify(d)))];
-    if (force || t - state.at.trend > 60000) jobs.push(fetchFile("trend", "trend.json").then((d) => store(TREND_CACHE_KEY, JSON.stringify(d))));
+    if (force || t - state.at.trend > 60000) jobs.push(load("trend.json").then((d) => {
+      state.at.trend = Date.now();
+      if (d && d.today) { state.trend = d; store(TREND_CACHE_KEY, JSON.stringify(d)); }
+    }));
     if (force || t - state.at.events > 30000) jobs.push(fetchFile("events", "events.json"));
     if ((state.tab === "mach" && (force || t - state.at.mtrend > 120000)) || t - state.at.mtrend > 600000) jobs.push(fetchFile("mtrend", "mtrend.json"));
     if (state.detail && t - state.at.hist > 600000) jobs.push(fetchFile("hist", "hist.json"));
@@ -537,15 +554,19 @@ function bind() {
   $("view").addEventListener("click", (e) => {
     const row = e.target.closest("[data-svid]");
     if (row) return openDetail(row.dataset.svid);
+    if (e.target.closest('[data-act="forget"]')) {
+      if (confirm("이 기기에 저장된 토큰을 지울까요? 다시 보려면 토큰을 새로 입력해야 합니다.")) {
+        store(TOKEN_KEY, null); store(CACHE_KEY, null); store(TREND_CACHE_KEY, null); showLogin("");
+      }
+      return;
+    }
     const chip = e.target.closest("[data-evf]");
     if (chip) { state.evf = chip.dataset.evf; render(); }
   });
   $("view").addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value; render(); } });
   $("view").addEventListener("change", (e) => { if (e.target.id === "sort") { state.sort = e.target.value; render(); } });
   $("refresh").onclick = () => tick(true);
-  $("gear").onclick = () => {
-    if (confirm("이 기기에 저장된 토큰을 지울까요?")) { store(TOKEN_KEY, null); store(CACHE_KEY, null); store(TREND_CACHE_KEY, null); showLogin(""); }
-  };
+
   $("tokSave").onclick = async () => {
     const v = $("tok").value.trim();
     if (!v) return;
