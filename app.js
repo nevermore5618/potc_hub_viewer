@@ -742,6 +742,18 @@ function diag() {
 function start() {
   bind();
   if (/[?&]diag\b/.test(location.search)) { setInterval(diag, 1000); window.addEventListener("scroll", diag, { passive: true }); }
+  if (/[?&]demo\b/.test(location.search) && window.parent !== window) {
+    document.documentElement.classList.add("demo");
+    window.addEventListener("message", (e) => {
+      const d = e.data;
+      if (!d || d.type !== "potc-demo") return;
+      Object.assign(state, { now: d.now || state.now, trend: d.trend || state.trend, events: d.events || state.events, mtrend: d.mtrend || state.mtrend, err: null });
+      render();
+    });
+    window.parent.postMessage({ type: "potc-demo-ready" }, "*");
+    render();
+    return;
+  }
   if (!CFG.owner || !CFG.repo) { showLogin("뷰어 설정(config.js)이 없습니다."); return; }
   try { const c = recall(CACHE_KEY); if (c) state.now = JSON.parse(c); } catch (e) { }
   try {

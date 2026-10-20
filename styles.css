@@ -206,3 +206,6 @@ main { padding: 8px 16px 0; }
 .foot { text-align: center; padding: 8px 0 4px; }
 .foot .link { background: none; border: 0; padding: 6px 10px; cursor: pointer; color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .empty { color: var(--muted); text-align: center; padding: 34px 0; }
+.demo .foot { display: none; }
+html.demo { scrollbar-width: none; }
+html.demo::-webkit-scrollbar { width: 0; height: 0; }
