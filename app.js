@@ -742,7 +742,7 @@ function diag() {
 function start() {
   bind();
   if (/[?&]diag\b/.test(location.search)) { setInterval(diag, 1000); window.addEventListener("scroll", diag, { passive: true }); }
-  if (/[?&]demo\b/.test(location.search) && window.parent !== window) {
+  if ((CFG.demo || /[?&]demo\b/.test(location.search)) && window.parent !== window) {
     document.documentElement.classList.add("demo");
     window.addEventListener("message", (e) => {
       const d = e.data;
