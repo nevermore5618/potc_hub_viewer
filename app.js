@@ -36,6 +36,67 @@ function recall(key) {
 
 class AuthError extends Error { }
 
+const NAME_KEY = "potc.live.name";
+const ACC_KEY = "potc.live.acc";
+const ACC_GAP = 600;
+const ACC_EVERY = 120;
+const acc = { id: null, start: 0, vis: 0, tabs: {}, seenAt: 0, sentAt: 0, last: 0, busy: false, off: null, fp: null };
+try { const a = JSON.parse(recall(ACC_KEY) || "null"); if (a && Date.now() / 1000 - a.last < ACC_GAP) Object.assign(acc, { id: a.id, start: a.start, vis: a.vis, tabs: a.tabs || {}, last: a.last }); } catch (e) { }
+
+async function tokenFp() {
+  const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(recall(TOKEN_KEY)));
+  return [...new Uint8Array(b)].slice(0, 4).map((x) => x.toString(16).padStart(2, "0")).join("");
+}
+function devName() {
+  const u = navigator.userAgent;
+  const os = /iPhone/.test(u) ? "iPhone" : /iPad/.test(u) ? "iPad" : /Android/.test(u) ? "Android" : /Windows/.test(u) ? "Windows" : /Mac/.test(u) ? "Mac" : "기타";
+  const br = /Edg/.test(u) ? "Edge" : /SamsungBrowser/.test(u) ? "삼성 인터넷" : /CriOS|Chrome/.test(u) ? "Chrome" : /FxiOS|Firefox/.test(u) ? "Firefox" : /Safari/.test(u) ? "Safari" : "";
+  const app = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone ? " 홈 화면 앱" : "";
+  return `${os} ${br}${app}`.trim();
+}
+function accCount() {
+  const now = Date.now() / 1000;
+  if (!document.hidden && acc.seenAt) {
+    const d = Math.min(now - acc.seenAt, 30);
+    acc.vis += d;
+    acc.tabs[state.tab] = (acc.tabs[state.tab] || 0) + d;
+  }
+  acc.seenAt = document.hidden ? 0 : now;
+  acc.last = now;
+}
+function accSave() {
+  store(ACC_KEY, JSON.stringify({ id: acc.id, start: acc.start, vis: acc.vis, tabs: acc.tabs, last: acc.last }));
+}
+function accReset() {
+  Object.assign(acc, { id: null, start: 0, vis: 0, tabs: {}, sentAt: 0 });
+  store(ACC_KEY, null);
+}
+async function accSync(force, keepalive) {
+  const issue = state.now && state.now.access_issue;
+  if (acc.off || acc.busy || !issue || !recall(TOKEN_KEY) || !window.crypto || !crypto.subtle) return;
+  accCount();
+  if (!force && acc.id && acc.last - acc.sentAt < ACC_EVERY) return;
+  acc.busy = true;
+  try {
+    if (!acc.fp) acc.fp = await tokenFp();
+    const body = "potc-access " + JSON.stringify({ v: 1, fp: acc.fp, name: recall(NAME_KEY), dev: devName(), vis: Math.round(acc.vis),
+      tabs: Object.entries(acc.tabs).map(([k, v]) => [k, Math.round(v)]) });
+    const base = `${API}/repos/${CFG.owner}/${CFG.repo}`;
+    const headers = { Authorization: `Bearer ${recall(TOKEN_KEY)}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" };
+    let r = acc.id ? await fetch(`${base}/issues/comments/${acc.id}`, { method: "PATCH", headers, keepalive: !!keepalive, body: JSON.stringify({ body }) }) : null;
+    if (r && r.status === 404) { acc.id = null; r = null; }
+    if (!r) {
+      r = await fetch(`${base}/issues/${issue}/comments`, { method: "POST", headers, body: JSON.stringify({ body }) });
+      if (r.ok) { acc.id = (await r.json()).id; acc.start = acc.last; }
+    }
+    if (r.status === 403 || r.status === 404) acc.off = "이 토큰에는 접속 기록(Issues) 권한이 없어 기록이 남지 않습니다.";
+    else if (r.ok) { acc.sentAt = acc.last; accSave(); }
+  } catch (e) {
+  } finally {
+    acc.busy = false;
+  }
+}
+
 async function load(file) {
   if (Date.now() < state.rlUntil) throw new Error(`요청 한도 초과, ${hhmm(state.rlUntil / 1000)} 이후 재개`);
   const url = `${API}/repos/${CFG.owner}/${CFG.repo}/contents/${file}?ref=${encodeURIComponent(CFG.branch || "live")}`;
@@ -330,7 +391,7 @@ function renderSummary() {
       ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
       ${tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`)}
     </div>
-    <div class="foot"><button class="link" data-act="forget">이 기기에서 토큰 지우기</button></div>`;
+    <div class="foot">${recall(NAME_KEY) ? `<span class="muted">${esc(recall(NAME_KEY))}</span> · ` : ""}<button class="link" data-act="forget">이 기기에서 토큰 지우기</button>${acc.off ? `<p class="muted">${esc(acc.off)}</p>` : ""}</div>`;
 }
 
 const SKY_TOP = { "ok-day": "#2a72cf", "ok-dusk": "#33407e", "ok-night": "#070f24", "warn-day": "#8a5a22", "warn-night": "#20160d",
@@ -577,6 +638,7 @@ async function tick(force) {
     if (state.detail && t - state.at.hist > 600000) jobs.push(fetchFile("hist", "hist.json"));
     await Promise.all(jobs);
     state.err = null;
+    accSync(false);
   } catch (e) {
     if (e instanceof AuthError) { showLogin(e.message); state.busy = false; return; }
     state.err = `갱신 실패: ${e.message}`;
@@ -587,6 +649,7 @@ async function tick(force) {
 
 function showLogin(msg) {
   $("login").hidden = false;
+  $("who").value = recall(NAME_KEY);
   $("tokMsg").textContent = msg || "";
 }
 
@@ -605,6 +668,7 @@ function bind() {
     if (row) return openDetail(row.dataset.svid);
     if (e.target.closest('[data-act="forget"]')) {
       if (confirm("이 기기에 저장된 토큰을 지울까요? 다시 보려면 토큰을 새로 입력해야 합니다.")) {
+        accSync(true, true); accReset(); acc.fp = null;
         store(TOKEN_KEY, null); store(CACHE_KEY, null); store(TREND_CACHE_KEY, null); showLogin("");
       }
       return;
@@ -617,8 +681,12 @@ function bind() {
   $("refresh").onclick = () => tick(true);
 
   $("tokSave").onclick = async () => {
-    const v = $("tok").value.trim();
-    if (!v) return;
+    const name = $("who").value.trim();
+    const v = $("tok").value.trim() || recall(TOKEN_KEY);
+    if (!name) { $("tokMsg").textContent = "이름을 적어 주세요."; return; }
+    if (!v) { $("tokMsg").textContent = "토큰을 적어 주세요."; return; }
+    if (v !== recall(TOKEN_KEY)) { accReset(); acc.fp = null; }
+    store(NAME_KEY, name);
     store(TOKEN_KEY, v);
     $("tokMsg").textContent = "확인 중...";
     try {
@@ -683,7 +751,13 @@ function start() {
     if (d && d.today && Math.abs(d.today.day_start - midnight) < 120) state.trend = d;
   } catch (e) { }
   render();
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) { accCount(); accSync(true, true); return; }
+    if (acc.id && Date.now() / 1000 - acc.last > ACC_GAP) accReset();
+    acc.seenAt = Date.now() / 1000;
+  });
   if (!recall(TOKEN_KEY)) { showLogin(""); return; }
+  if (!recall(NAME_KEY)) showLogin("이름을 적어 주세요. 토큰은 저장돼 있어 비워 둬도 됩니다.");
   tick(true);
   setInterval(() => tick(false), POLL_MS);
   setInterval(updateAge, 1000);

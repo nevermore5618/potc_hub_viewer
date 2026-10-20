@@ -11,7 +11,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
-<link rel="stylesheet" href="styles.css?v=20261020a">
+<link rel="stylesheet" href="styles.css?v=20261020b">
 </head>
 <body>
 <header class="top">
@@ -33,13 +33,14 @@
 <section id="login" class="login" hidden>
   <div class="box glass">
     <h2>POTC 라이브</h2>
-    <p>데이터 저장소를 읽는 토큰을 입력하세요. 이 기기의 브라우저에만 저장됩니다.</p>
+    <p>이름과 본인에게 받은 토큰을 입력하세요. 이 기기의 브라우저에만 저장되고, 볼 때마다 이름 · 기기 · 본 시간이 허브 관리 기록에 남습니다.</p>
+    <input id="who" type="text" autocomplete="name" maxlength="40" placeholder="이름">
     <input id="tok" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_...">
     <button id="tokSave" class="primary">저장</button>
     <p id="tokMsg" class="err"></p>
   </div>
 </section>
-<script src="config.js?v=20261020a"></script>
-<script src="app.js?v=20261020a"></script>
+<script src="config.js?v=20261020b"></script>
+<script src="app.js?v=20261020b"></script>
 </body>
 </html>
