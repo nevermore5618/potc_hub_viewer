@@ -266,6 +266,9 @@ function lastOf(trend, svid, field) {
   return null;
 }
 
+const ZONE_KO = { main: "일반", end: "바다의끝", death: "죽음의바다" };
+const zoneOf = (s) => s.zone || (s.svid >= 700 && s.svid < 800 ? "end" : s.svid >= 800 && s.svid < 1000 ? "death" : "main");
+
 function rankTile(icon, title, list, pick, digits, order, unit) {
   const rows = list.map((s) => ({ s, v: pick(s) })).filter((x) => x.v != null)
     .sort((a, b) => (order === "asc" ? a.v - b.v : b.v - a.v)).slice(0, 3);
@@ -290,7 +293,8 @@ function renderSummary() {
       cmp = `어제 이 시각 <span class="${diff >= 0 ? "up" : "down"}">${diff >= 0 ? "+" : ""}${num(diff)}</span>`;
     }
   }
-  const gs = (now.servers || []).filter((s) => s.type === "GS" && s.state === "on" && !MAINT.has(s.cond));
+  const gs = (now.servers || []).filter((s) => s.type === "GS" && s.state === "on" && !MAINT.has(s.cond) && zoneOf(s) === "main");
+  const zones = ["end", "death"].map((z) => [z, (t.zones || {})[z]]).filter(([, v]) => v && v.servers);
   const memTop = (now.machines || []).map((m) => ({ name: m.name, pct: m.mem_total_gb && m.mem_free_gb != null ? ((m.mem_total_gb - m.mem_free_gb) / m.mem_total_gb) * 100 : null }))
     .filter((m) => m.pct != null).sort((a, b) => b.pct - a.pct)[0];
   const issues = [];
@@ -319,7 +323,8 @@ function renderSummary() {
     <div class="card glass"><h3>${ic("chart")}오늘 접속자 추이</h3>${chart([{ vals: ySeries || [], cls: "s2", name: "어제" }, { vals: tSeries, cls: "s1", name: "오늘" }], { ticks: dayTicks(today), time: slotTime(today.bucket), unit: "명" })}${legend([["c1", "오늘"], ["c2", "어제"]])}</div>` : `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3><p class="note">추이를 불러오는 중입니다. 수집기를 다시 시작한 직후라면 몇 분 걸립니다.</p></div>`}
     <div class="tiles">
       ${tile("server", "서버", `${num(t.servers_on)}<span class="sub">/${num(t.servers)}</span>`, `주의 ${num(t.warn)} · 이상 ${num(t.bad)}`)}
-      ${tile("gauge", "FPS 평균", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`)}
+      ${tile("gauge", "FPS 평균 (일반)", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`)}
+      ${zones.length ? `<div class="tile glass rank wide"><div class="k">${ic("server")}바다의끝 · 죽음의바다</div><ul>${zones.map(([z, v]) => `<li data-zone="${z}"><span class="rn zn">${ZONE_KO[z]}</span><span class="rs">${num(v.servers_on)}/${num(v.servers)}대 · ${num(v.users)}명</span><b>${num(v.fps_avg, 0)}fps</b></li>`).join("")}</ul></div>` : ""}
       ${rankTile("gauge", "FPS 낮은 서버", gs, (s) => s.fps, 1, "asc", "")}
       ${rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%")}
       ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
@@ -359,7 +364,7 @@ function renderServers() {
   if (!now) return `<div class="empty">데이터를 불러오는 중입니다</div>`;
   const q = state.q.trim().toLowerCase();
   const hit = (now.servers || []).filter((s) => !q || `${s.svid} ${s.name} ${s.agent} ${s.type}`.toLowerCase().includes(q));
-  const list = sortServers(hit.filter((s) => s.type === "GS"));
+  const gsHit = hit.filter((s) => s.type === "GS");
   const others = hit.filter((s) => s.type !== "GS")
     .sort((a, b) => String(a.type).localeCompare(String(b.type)) || String(a.agent).localeCompare(String(b.agent)));
   const otherRows = others.map((s) => {
@@ -367,7 +372,7 @@ function renderServers() {
     return `<li><span class="dot ${lv}"></span><span class="oname">${esc(s.type)}</span><span class="muted">${esc(s.agent)}</span>
       <span class="ostate t-${lv}">${lv === "bad" ? esc(serverIssues(s).join(", ") || "꺼짐") : "켜짐"}</span></li>`;
   }).join("");
-  const rows = list.map((s) => {
+  const row = (s) => {
     const lv = serverLevel(s);
     const iss = serverIssues(s);
     return `<div class="srv" data-svid="${s.svid}">
@@ -376,6 +381,11 @@ function renderServers() {
       <span class="nums">${num(s.ccu)}명 · ${num(s.fps, 0)}fps · ${s.cpu == null ? "-" : num(s.cpu, 0) + "%"}</span>
       <span class="meta">${esc(s.type)} · ${esc(s.agent)} · ${esc(s.cond || "-")}${iss.length ? ` · <b class="t-${lv}">${esc(iss.join(", "))}</b>` : ""}${s.type === "GS" ? wusdBar(s.wusd) : ""}</span>
     </div>`;
+  };
+  const rows = sortServers(gsHit.filter((s) => zoneOf(s) === "main")).map(row).join("");
+  const zoneCards = ["end", "death"].map((z) => {
+    const zl = sortServers(gsHit.filter((s) => zoneOf(s) === z));
+    return zl.length ? `<div class="card glass"><h3>${ZONE_KO[z]}<span class="right">${zl.filter((s) => s.state === "on").length}/${zl.length}대 · ${num(zl.reduce((a, s) => a + (s.ccu || 0), 0))}명</span></h3>${zl.map(row).join("")}</div>` : "";
   }).join("");
   return `<div class="tools">
       <input id="q" type="search" placeholder="번호 · 이름 · 장비" value="${esc(state.q)}">
@@ -384,6 +394,7 @@ function renderServers() {
       </select>
     </div>
     <div class="card glass">${rows || `<div class="empty">해당 게임서버 없음</div>`}</div>
+    ${zoneCards}
     ${otherRows ? `<div class="card glass"><h3>기타 서버<span class="right">${others.filter((s) => serverLevel(s) === "ok").length}/${others.length} 켜짐</span></h3><ul class="list others">${otherRows}</ul></div>` : ""}`;
 }
 

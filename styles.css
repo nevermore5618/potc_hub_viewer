@@ -103,6 +103,8 @@ main { padding: 8px 16px 0; }
 .tile.rank .rn { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .tile.rank .rs { font-size: 11px; color: var(--muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile.rank b { margin-left: auto; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile.wide { grid-column: 1 / -1; }
+.tile.rank .zn { font-size: 15px; white-space: nowrap; }
 .tile .meter { height: 5px; border-radius: 3px; margin: 10px 0 8px; background: linear-gradient(90deg, #ff8a80, #ffd36b 45%, #8ff0b4 75%); position: relative; }
 .tile .meter i { position: absolute; top: -3px; width: 11px; height: 11px; border-radius: 50%; background: #fff; border: 2px solid rgba(0, 0, 0, 0.25); transform: translateX(-50%); }
 
