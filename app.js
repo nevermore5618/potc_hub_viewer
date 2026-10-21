@@ -502,7 +502,7 @@ function renderServers() {
     const iss = serverIssues(s);
     return `<div class="srv" data-svid="${s.svid}">
       <span class="dot ${lv}"></span>
-      <span class="name">${esc(s.name)}</span>
+      <span class="name">${s.type === "GS" && s.svid ? `${s.svid} <span class="sn">${esc(String(s.name || "").replace(/^\([^)]*\)\s*/, ""))}</span>` : esc(s.name)}</span>
       <span class="nums">${num(s.ccu)}명 · ${num(s.fps, 0)}fps · ${s.cpu == null ? "-" : num(s.cpu, 0) + "%"}</span>
       <span class="meta">${esc(s.type)} · ${esc(s.agent)} · ${esc(s.cond || "-")}${iss.length ? ` · <b class="t-${lv}">${esc(iss.join(", "))}</b>` : ""}${s.type === "GS" ? wusdBar(s.wusd) : ""}</span>
     </div>`;
@@ -563,8 +563,8 @@ function renderEvents() {
   const ask = canAsk();
   const rows = state.evShown.map((e, i) => `<div class="ev">
       <div class="h"><span class="tag t-${e.sev === "err" ? "bad" : e.sev === "warn" ? "warn" : e.sev === "ok" ? "ok" : "maint"}">${SEV_KO[e.sev] || esc(e.sev)}</span>
-      <span class="muted">${mdhm(e.ep)}</span><b>${esc(e.server)}</b>${ask ? `<button class="ask" data-ask="${i}">AI 분석</button>` : ""}</div>
-      <div class="msg">${esc(e.msg)}</div></div>`).join("");
+      <span class="muted">${mdhm(e.ep)}</span><b>${esc(e.server)}</b></div>
+      <div class="msg">${esc(e.msg)}</div>${ask ? `<div class="ea"><button class="ask" data-ask="${i}">AI 분석</button></div>` : ""}</div>`).join("");
   return `<div class="chips">${chips}</div><div class="card glass">${rows || `<div class="empty">이벤트 없음</div>`}</div>`;
 }
 
