@@ -19,7 +19,7 @@ const ASK_KO = { accepted: "분석 시작", exists: "1시간 안에 같은 대�
   denied: "요청 권한 없음", stale: "30분 넘게 지나 받지 않음", invalid: "잘못된 요청" };
 const REPORTS_MS = 60000;
 const MQ_KO = { ok: "정상", bad: "무응답", restart: "자동 재시작 중", stale: "정보 끊김", off: "감시 꺼짐" };
-const MQ_AUTO_KO = { ON: "켜짐", HOLD: "보류", OFF: "꺼짐" };
+const MQ_AUTO_KO = { ON: "켜짐", HOLD: "보류", OFF: "꺼짐", UNARMED: "보류 · 확인 전" };
 const ASK_WAIT_SEC = 300;
 
 const state = {
@@ -453,7 +453,7 @@ function renderSummary() {
       ${rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%")}
       ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
       ${tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`)}
-      ${mqs.length ? tile("db", "메시지 큐", `<span class="mq-${mqWorst}">${esc(MQ_KO[mqWorst] || "-")}</span>`, mqs.map((b) => `${esc(b.machine)} ${b.probe_ms == null ? "" : `${num(b.probe_ms)}ms · `}자동 재시작 ${esc(MQ_AUTO_KO[b.autorestart] || b.autorestart || "-")}`).join("<br>") + ` · 알림 24시간 ${num(mqAlarm.length)}건`) : ""}
+      ${mqs.length ? tile("db", "메시지 큐", `<span class="mq-${mqWorst}">${esc(MQ_KO[mqWorst] || "-")}</span>`, mqs.map((b) => `${esc(b.machine)} ${b.probe_ms == null ? "" : `${num(b.probe_ms)}ms · `}자동 재시작 ${esc(MQ_AUTO_KO[b.autorestart === "HOLD" && b.armed === 0 ? "UNARMED" : b.autorestart] || b.autorestart || "-")}`).join("<br>") + ` · 알림 24시간 ${num(mqAlarm.length)}건`) : ""}
     </div>
     <div class="foot">${recall(NAME_KEY) ? `<span class="muted">${esc(recall(NAME_KEY))}</span> · ` : ""}<button class="link" data-act="forget">이 기기에서 토큰 지우기</button>${acc.off ? `<p class="muted">${esc(acc.off)}</p>` : ""}</div>`;
 }
