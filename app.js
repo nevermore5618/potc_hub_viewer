@@ -13,11 +13,18 @@ const WARN_FLAGS = { high_dispatch: "처리 대기 적체" };
 const MACHINE_FLAGS = { cpu: "CPU 95%+", net: "네트워크 95%+", mem: "메모리 부족", drive: "디스크 부족", stale: "정보 끊김" };
 const LEVEL_KO = { ok: "정상", warn: "주의", bad: "이상", maint: "점검" };
 const SEV_KO = { err: "오류", warn: "경고", ok: "복구", info: "정보" };
+const KIND_KO = { incident: "경보 분석", daily_report: "일일 리포트", log_summary: "로그 요약", alarm_triage: "알람 분류" };
+const STAT_KO = { pending: "대기", running: "분석 중", done: "완료", failed: "실패", skipped: "건너뜀" };
+const ASK_KO = { accepted: "분석 시작", exists: "1시간 안에 같은 대상 리포트 있음", off: "분석이 꺼져 있음", budget: "예산 정지선 초과",
+  denied: "요청 권한 없음", stale: "30분 넘게 지나 받지 않음", invalid: "잘못된 요청" };
+const REPORTS_MS = 60000;
+const ASK_WAIT_SEC = 300;
 
 const state = {
-  now: null, trend: null, mtrend: null, events: null, hist: null,
-  at: { now: 0, trend: 0, mtrend: 0, events: 0, hist: 0 },
-  tab: "sum", sort: "state", q: "", evf: "all", detail: null, err: null, rlUntil: 0, busy: false, scrub: null, pendingRender: false, pin: null, down: null,
+  now: null, trend: null, mtrend: null, events: null, hist: null, reports: null,
+  at: { now: 0, trend: 0, mtrend: 0, events: 0, hist: 0, reports: 0 },
+  tab: "sum", sort: "state", q: "", evf: "all", rkf: "all", detail: null, report: null, asks: [], evShown: [],
+  err: null, rlUntil: 0, busy: false, scrub: null, pendingRender: false, pin: null, down: null,
 };
 
 const $ = (id) => document.getElementById(id);
@@ -26,6 +33,53 @@ const num = (v, d = 0) => (v == null || isNaN(v) ? "-" : Number(v).toLocaleStrin
 const pad = (n) => String(n).padStart(2, "0");
 const hhmm = (ep) => { if (!ep) return "-"; const d = new Date(ep * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const mdhm = (ep) => { if (!ep) return "-"; const d = new Date(ep * 1000); return `${d.getMonth() + 1}/${d.getDate()} ${hhmm(ep)}`; };
+
+function md(src) {
+  const lines = String(src || "").replace(/\t/g, "    ").split(/\r?\n/), out = [];
+  const inl = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const LI = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
+  for (let i = 0; i < lines.length;) {
+    const l = lines[i];
+    if (/^\s*\|/.test(l)) {
+      const rows = [];
+      while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++].trim());
+      const cells = (r) => r.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const body = rows.filter((r) => !/^\|[\s:\-|]+\|?$/.test(r)).map(cells);
+      out.push(`<div class="tbl"><table>${body.map((r, k) => `<tr>${r.map((c) => (k ? `<td>${inl(c)}</td>` : `<th>${inl(c)}</th>`)).join("")}</tr>`).join("")}</table></div>`);
+      continue;
+    }
+    if (LI.test(l)) {
+      let html = "", depth = [];
+      while (i < lines.length) {
+        const m = LI.exec(lines[i]);
+        if (!m) {
+          if (lines[i].trim() && /^\s{2,}/.test(lines[i]) && html) { html = html.replace(/<\/li>$/, ` ${inl(lines[i].trim())}</li>`); i++; continue; }
+          if (!lines[i].trim() && i + 1 < lines.length && LI.test(lines[i + 1])) { i++; continue; }
+          break;
+        }
+        const ind = m[1].length, tag = /\d/.test(m[2]) ? "ol" : "ul";
+        while (depth.length && ind < depth[depth.length - 1].ind) html += `</${depth.pop().tag}>`;
+        if (!depth.length || ind > depth[depth.length - 1].ind) { html += `<${tag}>`; depth.push({ ind, tag }); }
+        html += `<li>${inl(m[3])}</li>`;
+        i++;
+      }
+      while (depth.length) html += `</${depth.pop().tag}>`;
+      out.push(html);
+      continue;
+    }
+    const h = /^(#{1,4})\s+(.*)$/.exec(l);
+    if (h) out.push(h[1].length <= 2 ? `<h4>${inl(h[2])}</h4>` : `<h5>${inl(h[2])}</h5>`);
+    else if (l.trim() && !/^\s*(---|\*\*\*)\s*$/.test(l)) {
+      const para = [l.trim()];
+      i++;
+      while (i < lines.length && lines[i].trim() && !LI.test(lines[i]) && !/^\s*\||^#{1,4}\s/.test(lines[i])) para.push(lines[i++].trim());
+      out.push(`<p>${para.map(inl).join("<br>")}</p>`);
+      continue;
+    }
+    i++;
+  }
+  return out.join("");
+}
 
 function store(key, val) {
   try { if (val == null) localStorage.removeItem(key); else localStorage.setItem(key, val); } catch (e) { }
@@ -495,11 +549,97 @@ function renderEvents() {
   const evs = ((state.events && state.events.events) || []).slice().reverse()
     .filter((e) => state.evf === "all" || e.sev === state.evf);
   const chips = [["all", "전체"], ["err", "오류"], ["warn", "경고"]].map(([v, l]) => `<button data-evf="${v}" class="${state.evf === v ? "on" : ""}">${l}</button>`).join("");
-  const rows = evs.slice(0, 150).map((e) => `<div class="ev">
+  state.evShown = evs.slice(0, 150);
+  const ask = canAsk();
+  const rows = state.evShown.map((e, i) => `<div class="ev">
       <div class="h"><span class="tag t-${e.sev === "err" ? "bad" : e.sev === "warn" ? "warn" : e.sev === "ok" ? "ok" : "maint"}">${SEV_KO[e.sev] || esc(e.sev)}</span>
-      <span class="muted">${mdhm(e.ep)}</span><b>${esc(e.server)}</b></div>
+      <span class="muted">${mdhm(e.ep)}</span><b>${esc(e.server)}</b>${ask ? `<button class="ask" data-ask="${i}">AI 분석</button>` : ""}</div>
       <div class="msg">${esc(e.msg)}</div></div>`).join("");
   return `<div class="chips">${chips}</div><div class="card glass">${rows || `<div class="empty">이벤트 없음</div>`}</div>`;
+}
+
+function canAsk() {
+  const r = state.reports;
+  return !!(r && acc.fp && (r.analyzers || []).includes(acc.fp) && state.now && state.now.access_issue);
+}
+
+async function askAnalyze(e) {
+  if (!e || !canAsk()) return;
+  if (!confirm(`이 이벤트를 AI 경보 분석에 넘길까요?\n\n${e.server} · ${mdhm(e.ep)}\n${String(e.msg || "").slice(0, 120)}\n\n수집기가 1분 안에 받아 시작하고, 결과는 리포트 탭에 나옵니다.`)) return;
+  const item = { source: "event", ep: e.ep, svid: e.svid, sev: e.sev, code: e.code, server: e.server, msg: e.msg };
+  const body = "potc-analyze " + JSON.stringify({ v: 1, fp: acc.fp, name: recall(NAME_KEY), dev: devName(), item });
+  const base = `${API}/repos/${CFG.owner}/${CFG.repo}`;
+  try {
+    const r = await fetch(`${base}/issues/${state.now.access_issue}/comments`, { method: "POST",
+      headers: { Authorization: `Bearer ${recall(TOKEN_KEY)}`, Accept: "application/vnd.github+json", "Content-Type": "application/json" }, body: JSON.stringify({ body }) });
+    if (!r.ok) throw new Error(r.status === 403 || r.status === 404 ? "이 토큰에는 요청(Issues 쓰기) 권한이 없습니다." : `HTTP ${r.status}`);
+    const c = await r.json();
+    state.asks.push({ id: c.id, ts: Date.now() / 1000, what: `${e.server} ${String(e.msg || "").slice(0, 60)}` });
+    state.tab = "rep";
+    document.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x.dataset.tab === "rep"));
+    render();
+    window.scrollTo(0, 0);
+  } catch (err) {
+    alert(`요청을 보내지 못했습니다: ${err.message}`);
+  }
+}
+
+const reportTitle = (x) => (x.kind === "incident" ? (x.subjects || []).map((s) => s.target).join(", ") || "경보" : KIND_KO[x.kind] || x.kind);
+
+function renderReports() {
+  const R = state.reports;
+  if (!R) return `<div class="empty">리포트를 불러오는 중입니다</div>`;
+  const chips = [["all", "전체"], ["incident", "경보 분석"], ["daily_report", "일일"], ["log_summary", "로그 요약"], ["alarm_triage", "알람 분류"]]
+    .map(([v, l]) => `<button data-rkf="${v}" class="${state.rkf === v ? "on" : ""}">${l}</button>`).join("");
+  const now = Date.now() / 1000;
+  const mine = (R.requests || []).filter((r) => r.fp === acc.fp && now - r.ts < 86400).slice(-5).reverse();
+  const waiting = state.asks.filter((a) => now - a.ts < ASK_WAIT_SEC && !(R.requests || []).some((r) => r.id === a.id));
+  const reqRows = waiting.map((a) => `<li><span class="tag t-maint">보냄</span><span>${esc(a.what)}<span class="sub">수집기 확인 대기 · ${hhmm(a.ts)}</span></span></li>`)
+    .concat(mine.map((r) => `<li${r.job ? ` data-rep="${r.job}"` : ""}><span class="tag t-${r.result === "accepted" || r.result === "exists" ? "ok" : "warn"}">${esc(ASK_KO[r.result] || r.result)}</span>
+      <span>${esc(r.what || "")}<span class="sub">${hhmm(r.ts)}${r.job ? ` · 작업 #${r.job}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}</span></span></li>`)).join("");
+  const list = (R.reports || []).filter((x) => state.rkf === "all" || x.kind === state.rkf);
+  const rows = list.map((x) => {
+    const st = x.status === "done" ? "" : `<span class="tag t-${x.status === "failed" ? "bad" : "maint"}">${esc(STAT_KO[x.status] || x.status)}</span>`;
+    const org = x.origin === "manual" ? `<span class="tag">요청</span>` : x.origin === "chain" ? `<span class="tag">알람에서</span>` : "";
+    const rep = x.repeat ? `<span class="tag t-warn">${x.repeat}회째</span>` : "";
+    const by = (x.subjects || []).map((s) => s.by).filter(Boolean)[0];
+    const lead = x.conclusion || (x.md ? String(x.md).split(/\n/).map((l) => l.replace(/^[#>*\-\s|]+/, "").trim()).find((l) => l.length > 8) : "") || x.error || "";
+    return `<div class="rep" data-rep="${x.id}"><div class="h"><span class="muted">${mdhm(x.created)}</span><b>${esc(KIND_KO[x.kind] || x.kind)}</b>${org}${rep}${st}</div>
+      ${x.kind === "incident" ? `<div class="tg">${esc(reportTitle(x))}${by ? ` · ${esc(by)}` : ""}</div>` : ""}
+      <div class="ld">${esc(String(lead).slice(0, 160))}</div></div>`;
+  }).join("");
+  const off = R.on === false || R.mode === "off" ? `<p class="note">경보 분석이 꺼져 있습니다.</p>` : "";
+  return `${reqRows ? `<div class="card glass"><h3>${ic("spark")}내 분석 요청</h3><ul class="list">${reqRows}</ul></div>` : ""}
+    <div class="chips scroll">${chips}</div>${off}<div class="card glass">${rows || `<div class="empty">리포트 없음</div>`}</div>
+    ${canAsk() ? "" : `<p class="note muted small">AI 분석 요청은 허브 관리 › 권한에서 이 토큰에 요청 권한을 켜야 이벤트 탭에 나타납니다.</p>`}`;
+}
+
+function renderReport() {
+  const x = ((state.reports && state.reports.reports) || []).find((r) => String(r.id) === String(state.report));
+  const sheet = $("sheet");
+  if (!x) { sheet.hidden = true; state.report = null; return; }
+  const meta = [mdhm(x.created), x.model ? String(x.model).replace(/^claude-/, "") : "", x.cost != null ? `$${Number(x.cost).toFixed(3)}` : "", `작업 #${x.id}`].filter(Boolean).join(" · ");
+  const subs = (x.subjects || []).map((s) => `<li><span class="tag">${esc(s.kind_ko || "")}</span><span>${esc(s.target)}${s.by ? `<span class="sub">요청 ${esc(s.by)}</span>` : ""}</span></li>`).join("");
+  const body = x.status === "done" ? (x.md ? `<div class="md">${md(x.md)}</div>` : `<div class="sub">본문 없음</div>`)
+    : `<p class="note">${esc(STAT_KO[x.status] || x.status)}${x.error ? ` · ${esc(x.error)}` : ""}</p>`;
+  sheet.innerHTML = `
+    <header class="top"><button id="back" class="round glass" aria-label="뒤로"><svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
+      <h1>${esc(KIND_KO[x.kind] || x.kind)}</h1></header>
+    <main>
+      <p class="note muted small">${esc(meta)}</p>
+      ${subs ? `<div class="card glass"><h3>${ic("alert")}대상</h3><ul class="list">${subs}</ul></div>` : ""}
+      <div class="card glass">${body}</div>
+    </main>`;
+  sheet.hidden = false;
+  $("back").onclick = closeDetail;
+}
+
+function openReport(id) {
+  state.report = String(id);
+  state.detail = null;
+  history.pushState({ detail: `r${state.report}` }, "");
+  renderReport();
+  $("sheet").scrollTop = 0;
 }
 
 function renderDetail() {
@@ -562,6 +702,7 @@ function renderDetail() {
 
 function openDetail(svid) {
   state.detail = String(svid);
+  state.report = null;
   history.pushState({ detail: state.detail }, "");
   renderDetail();
   if (Date.now() - state.at.hist > 600000) fetchFile("hist", "hist.json").then(() => state.detail && renderDetail());
@@ -569,10 +710,10 @@ function openDetail(svid) {
 
 function closeDetail() {
   if (history.state && history.state.detail) history.back();
-  else { state.detail = null; $("sheet").hidden = true; }
+  else { state.detail = null; state.report = null; $("sheet").hidden = true; }
 }
 
-const TITLES = { sum: "", srv: "서버", mach: "장비", ev: "이벤트" };
+const TITLES = { sum: "", srv: "서버", mach: "장비", ev: "이벤트", rep: "리포트" };
 
 function render() {
   if (state.scrub) { state.pendingRender = true; return; }
@@ -587,7 +728,7 @@ function render() {
   $("title").textContent = TITLES[state.tab];
   updateAge();
   const view = $("view");
-  const html = { sum: renderSummary, srv: renderServers, mach: renderMachines, ev: renderEvents }[state.tab]();
+  const html = { sum: renderSummary, srv: renderServers, mach: renderMachines, ev: renderEvents, rep: renderReports }[state.tab]();
   const focus = document.activeElement && document.activeElement.id === "q";
   const caret = focus ? document.activeElement.selectionStart : null;
   const hoursX = $("hours") ? $("hours").scrollLeft : null;
@@ -596,6 +737,7 @@ function render() {
   const hs = $("hours");
   if (hs) hs.scrollLeft = hoursX == null || hoursX >= hs.scrollWidth - hs.clientWidth - 60 ? hs.scrollWidth : hoursX;
   if (state.detail) renderDetail();
+  else if (state.report) renderReport();
   applyPin();
 }
 
@@ -636,6 +778,10 @@ async function tick(force) {
     if (force || t - state.at.events > 30000) jobs.push(fetchFile("events", "events.json"));
     if ((state.tab === "mach" && (force || t - state.at.mtrend > 120000)) || t - state.at.mtrend > 600000) jobs.push(fetchFile("mtrend", "mtrend.json"));
     if (state.detail && t - state.at.hist > 600000) jobs.push(fetchFile("hist", "hist.json"));
+    const asking = state.asks.some((a) => t / 1000 - a.ts < ASK_WAIT_SEC);
+    const repEvery = state.tab === "rep" || state.report || asking ? Math.min(REPORTS_MS, POLL_MS * 2) : 600000;
+    if (force || t - state.at.reports > repEvery) jobs.push(fetchFile("reports", "reports.json").catch(() => null));
+    if (!acc.fp && window.crypto && crypto.subtle) jobs.push(tokenFp().then((fp) => { acc.fp = fp; }));
     await Promise.all(jobs);
     state.err = null;
     accSync(false);
@@ -662,6 +808,7 @@ function bind() {
     render();
     window.scrollTo(0, 0);
     if (state.tab === "mach" && Date.now() - state.at.mtrend > 120000) fetchFile("mtrend", "mtrend.json").then(render).catch(() => { });
+    if (state.tab === "rep" && Date.now() - state.at.reports > 30000) fetchFile("reports", "reports.json").then(render).catch(() => { });
   });
   $("view").addEventListener("click", (e) => {
     const row = e.target.closest("[data-svid]");
@@ -674,7 +821,13 @@ function bind() {
       return;
     }
     const chip = e.target.closest("[data-evf]");
-    if (chip) { state.evf = chip.dataset.evf; render(); }
+    if (chip) { state.evf = chip.dataset.evf; render(); return; }
+    const rchip = e.target.closest("[data-rkf]");
+    if (rchip) { state.rkf = rchip.dataset.rkf; render(); return; }
+    const askBtn = e.target.closest("[data-ask]");
+    if (askBtn) { askAnalyze(state.evShown[Number(askBtn.dataset.ask)]); return; }
+    const rep = e.target.closest("[data-rep]");
+    if (rep) openReport(rep.dataset.rep);
   });
   $("view").addEventListener("input", (e) => { if (e.target.id === "q") { state.q = e.target.value; render(); } });
   $("view").addEventListener("change", (e) => { if (e.target.id === "sort") { state.sort = e.target.value; render(); } });
@@ -709,7 +862,7 @@ function bind() {
   document.addEventListener("pointermove", (e) => { if (state.scrub) scrubAt(state.scrub, e.clientX); });
   document.addEventListener("pointerup", scrubEnd);
   document.addEventListener("pointercancel", scrubEnd);
-  window.addEventListener("popstate", () => { if (state.detail) { state.detail = null; $("sheet").hidden = true; } });
+  window.addEventListener("popstate", () => { if (state.detail || state.report) { state.detail = null; state.report = null; $("sheet").hidden = true; } });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) tick(true); });
   window.addEventListener("pageshow", (e) => { if (e.persisted) tick(true); });
 }
