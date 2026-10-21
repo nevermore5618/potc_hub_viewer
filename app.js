@@ -18,6 +18,8 @@ const STAT_KO = { pending: "대기", running: "분석 중", done: "완료", fail
 const ASK_KO = { accepted: "분석 시작", exists: "1시간 안에 같은 대상 리포트 있음", off: "분석이 꺼져 있음", budget: "예산 정지선 초과",
   denied: "요청 권한 없음", stale: "30분 넘게 지나 받지 않음", invalid: "잘못된 요청" };
 const REPORTS_MS = 60000;
+const MQ_KO = { ok: "정상", bad: "무응답", restart: "자동 재시작 중", stale: "정보 끊김", off: "감시 꺼짐" };
+const MQ_AUTO_KO = { ON: "켜짐", HOLD: "보류", OFF: "꺼짐" };
 const ASK_WAIT_SEC = 300;
 
 const state = {
@@ -420,6 +422,13 @@ function renderSummary() {
   for (const m of now.machines || []) {
     if ((m.flags || []).length) issues.push({ lv: "warn", text: `${m.name}: ${m.flags.map((f) => MACHINE_FLAGS[f] || f).join(", ")}` });
   }
+  const mqs = (now.mq && now.mq.brokers) || [];
+  for (const b of mqs) {
+    if (b.status === "bad" || b.status === "restart" || b.status === "stale")
+      issues.push({ lv: b.status === "stale" ? "warn" : "bad", text: `메시지 큐 ${b.machine}: ${MQ_KO[b.status]}${b.last && b.last !== "OK" ? ` (${b.last})` : ""}` });
+  }
+  const mqWorst = ["bad", "restart", "stale", "off", "ok"].find((k) => mqs.some((b) => b.status === k));
+  const mqAlarm = ((now.mq && now.mq.alarms) || []).filter((a) => Date.now() / 1000 - a.ts < 86400);
   const incidents = (now.incidents || []).map((x) => `<li><span class="muted">${hhmm(x.created)}</span>
       <span>${esc(x.conclusion || (x.status === "done" ? "결론 없음" : "분석 중"))}
       <span class="sub">${esc((x.subjects || []).map((s) => s.target).join(", "))}</span></span></li>`).join("");
@@ -444,6 +453,7 @@ function renderSummary() {
       ${rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%")}
       ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
       ${tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`)}
+      ${mqs.length ? tile("db", "메시지 큐", `<span class="mq-${mqWorst}">${esc(MQ_KO[mqWorst] || "-")}</span>`, mqs.map((b) => `${esc(b.machine)} ${b.probe_ms == null ? "" : `${num(b.probe_ms)}ms · `}자동 재시작 ${esc(MQ_AUTO_KO[b.autorestart] || b.autorestart || "-")}`).join("<br>") + ` · 알림 24시간 ${num(mqAlarm.length)}건`) : ""}
     </div>
     <div class="foot">${recall(NAME_KEY) ? `<span class="muted">${esc(recall(NAME_KEY))}</span> · ` : ""}<button class="link" data-act="forget">이 기기에서 토큰 지우기</button>${acc.off ? `<p class="muted">${esc(acc.off)}</p>` : ""}</div>`;
 }

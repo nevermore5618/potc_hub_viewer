@@ -228,3 +228,4 @@ main { padding: 8px 16px 0; }
 .demo .foot { display: none; }
 html.demo { scrollbar-width: none; }
 html.demo::-webkit-scrollbar { width: 0; height: 0; }
+.mq-bad, .mq-restart { color: var(--bad); } .mq-stale { color: var(--warn); } .mq-off { color: var(--muted); }
