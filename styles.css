@@ -113,6 +113,18 @@ main { padding: 8px 16px 0; }
 .list li:first-child { border-top: 0; padding-top: 0; }
 .list li .sub { display: block; margin-top: 2px; }
 .list li > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.list li.sw { display: block; padding: 0; }
+.list li.sw > .sw-row { display: flex; gap: 10px; align-items: baseline; padding: 8px 0; }
+.list li.sw:first-child > .sw-row { padding-top: 0; }
+.list li.sw > .sw-row > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+.sw { position: relative; overflow: hidden; transition: height 0.26s ease, opacity 0.26s ease; }
+.sw-act { position: absolute; top: 0; bottom: 0; right: 0; width: var(--sw, 0px); overflow: hidden; display: flex; transition: width 0.2s ease; }
+.sw-del { flex: 1; min-width: 0; margin: 4px 0 4px 6px; padding: 0; border: 0; border-radius: 12px; background: #ff453a; color: #fff; display: flex; align-items: center; justify-content: center; }
+.sw-del svg { flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.sw-row { touch-action: pan-y; transform: translateX(calc(var(--sw, 0px) * -1)); transition: transform 0.2s ease; }
+.sw.drag .sw-row, .sw.drag .sw-act { transition: none; }
+.sw.drag .sw-row { user-select: none; -webkit-user-select: none; }
+.sw.gone { height: 0 !important; opacity: 0; }
 .tag { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 8px; white-space: nowrap; background: var(--glass-strong); }
 .t-bad { color: var(--bad); } .t-warn { color: var(--warn); } .t-ok { color: var(--ok); } .t-maint { color: var(--maint); }
 .muted { color: var(--muted); }

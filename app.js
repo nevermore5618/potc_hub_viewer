@@ -94,6 +94,7 @@ class AuthError extends Error { }
 
 const NAME_KEY = "potc.live.name";
 const ACC_KEY = "potc.live.acc";
+const INC_HIDE_KEY = "potc.live.inc_hidden";
 const ACC_GAP = 600;
 const ACC_EVERY = 120;
 const acc = { id: null, start: 0, vis: 0, tabs: {}, seenAt: 0, sentAt: 0, last: 0, busy: false, off: null, fp: null };
@@ -330,7 +331,7 @@ function scrubEnd(e) {
   if (!state.scrub && down && e && e.type === "pointerup" && !down.onChart &&
       Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8) clearPin();
   state.scrub = null;
-  if (state.pendingRender) { state.pendingRender = false; render(); }
+  if (state.pendingRender && !swBusy()) { state.pendingRender = false; render(); }
 }
 
 function dayTicks(trend) {
@@ -441,9 +442,10 @@ function renderSummary() {
   }
   const mqWorst = ["bad", "restart", "stale", "off", "ok"].find((k) => mqs.some((b) => b.status === k));
   const mqAlarm = ((now.mq && now.mq.alarms) || []).filter((a) => Date.now() / 1000 - a.ts < 86400);
-  const incidents = (now.incidents || []).map((x) => `<li><span class="muted">${hhmm(x.created)}</span>
+  const hidden = incHidden();
+  const incidents = (now.incidents || []).filter((x) => !hidden.includes(x.id)).map((x) => `<li class="sw" data-swid="${x.id}">${SW_DEL}<div class="sw-row"><span class="muted">${hhmm(x.created)}</span>
       <span>${esc(x.conclusion || (x.status === "done" ? "결론 없음" : "분석 중"))}
-      <span class="sub">${esc((x.subjects || []).map((s) => s.target).join(", "))}</span></span></li>`).join("");
+      <span class="sub">${esc((x.subjects || []).map((s) => s.target).join(", "))}</span></span></div></li>`).join("");
   const fpsPos = t.fps_min == null ? null : Math.max(0, Math.min(100, (t.fps_min / 150) * 100));
   const tile = (icon, k, v, sub, extra = "") => `<div class="tile glass"><div class="k">${ic(icon)}${esc(k)}</div><div class="v">${v}</div>${extra}<div class="s">${sub}</div></div>`;
   return `
@@ -739,8 +741,75 @@ function closeDetail() {
 
 const TITLES = { sum: "", srv: "서버", mach: "장비", ev: "이벤트", rep: "리포트" };
 
+function incHidden() {
+  try { const v = JSON.parse(recall(INC_HIDE_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function incHide(id) {
+  const ids = incHidden().filter((x) => x !== id);
+  ids.push(id);
+  store(INC_HIDE_KEY, JSON.stringify(ids.slice(-200)));
+}
+
+const SW = { row: null, x0: 0, y0: 0, dx: 0, base: 0, drag: false, moved: false, open: null, gone: 0, pid: null };
+const SW_W = 76;
+const SW_DEL = `<div class="sw-act"><button class="sw-del" aria-label="지우기"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg></button></div>`;
+const swBusy = () => !!(SW.drag || SW.open || SW.gone);
+function swSet(sw, px, anim) { sw.classList.toggle("drag", !anim); sw.style.setProperty("--sw", px + "px"); }
+function swIdle() { if (!swBusy() && state.pendingRender && !state.scrub) { state.pendingRender = false; render(); } }
+function swClose() { if (SW.open) swSet(SW.open, 0, true); SW.open = null; swIdle(); }
+function swRemove(sw) {
+  if (!sw || sw.classList.contains("gone")) return;
+  SW.open = null; SW.gone++;
+  sw.style.height = sw.offsetHeight + "px";
+  void sw.offsetHeight;
+  swSet(sw, sw.offsetWidth, true); sw.classList.add("gone");
+  setTimeout(() => { SW.gone--; incHide(Number(sw.dataset.swid)); state.pendingRender = true; swIdle(); }, 260);
+}
+function swInit() {
+  document.addEventListener("pointerdown", (e) => {
+    SW.moved = false;
+    const sw = e.target.closest(".sw");
+    if (SW.open && SW.open !== sw) swClose();
+    if (!sw || e.target.closest(".sw-del")) return;
+    Object.assign(SW, { row: sw, x0: e.clientX, y0: e.clientY, dx: 0, base: SW.open === sw ? SW_W : 0, drag: false, pid: e.pointerId });
+  });
+  document.addEventListener("pointermove", (e) => {
+    const sw = SW.row;
+    if (!sw || e.pointerId !== SW.pid) return;
+    const dx = e.clientX - SW.x0, dy = e.clientY - SW.y0;
+    if (!SW.drag) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) { SW.row = null; return; }
+      if (Math.abs(dx) < 8) return;
+      SW.drag = true; SW.moved = true;
+      try { sw.setPointerCapture(e.pointerId); } catch (err) { }
+    }
+    SW.dx = Math.max(0, SW.base - dx);
+    swSet(sw, SW.dx, false);
+  });
+  const end = () => {
+    const sw = SW.row;
+    SW.row = null;
+    if (!sw || !SW.drag) return;
+    SW.drag = false;
+    if (SW.dx > sw.offsetWidth * 0.55) swRemove(sw);
+    else if (SW.dx > SW_W / 2) { swSet(sw, SW_W, true); SW.open = sw; }
+    else { swSet(sw, 0, true); if (SW.open === sw) SW.open = null; }
+    swIdle();
+  };
+  document.addEventListener("pointerup", end);
+  document.addEventListener("pointercancel", end);
+  document.addEventListener("click", (e) => {
+    const del = e.target.closest(".sw-del");
+    if (del) { e.preventDefault(); e.stopPropagation(); swRemove(del.closest(".sw")); return; }
+    const sw = e.target.closest(".sw");
+    if (!sw) return;
+    if (SW.moved) { SW.moved = false; e.preventDefault(); e.stopPropagation(); return; }
+    if (SW.open === sw) { e.preventDefault(); e.stopPropagation(); swClose(); }
+  }, true);
+}
+
 function render() {
-  if (state.scrub) { state.pendingRender = true; return; }
+  if (state.scrub || swBusy()) { state.pendingRender = true; return; }
   CHARTS.clear();
   const now = state.now;
   const sky = skyOf(now && now.level);
@@ -876,6 +945,7 @@ function bind() {
       if (e instanceof AuthError) store(TOKEN_KEY, null);
     }
   };
+  swInit();
   document.addEventListener("pointerdown", (e) => {
     const wrap = e.target.closest(".chartwrap");
     state.down = { x: e.clientX, y: e.clientY, onChart: !!wrap };
