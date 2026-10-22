@@ -386,6 +386,18 @@ function lastOf(trend, svid, field) {
 const ZONE_KO = { main: "일반", end: "바다의끝", death: "죽음의바다" };
 const zoneOf = (s) => s.zone || (s.svid >= 700 && s.svid < 800 ? "end" : s.svid >= 800 && s.svid < 1000 ? "death" : "main");
 
+function pairTiles(list) {
+  const out = list.filter(Boolean);
+  let run = [];
+  const close = () => {
+    if (run.length % 2) { const i = run[run.length - 1]; out[i] = out[i].replace('class="tile ', 'class="tile wide '); }
+    run = [];
+  };
+  out.forEach((h, i) => { if (/^<div class="tile [^"]*\bwide\b/.test(h)) close(); else run.push(i); });
+  close();
+  return out.join("");
+}
+
 function rankTile(icon, title, list, pick, digits, order, unit) {
   const rows = list.map((s) => ({ s, v: pick(s) })).filter((x) => x.v != null)
     .sort((a, b) => (order === "asc" ? a.v - b.v : b.v - a.v)).slice(0, 3);
@@ -446,14 +458,16 @@ function renderSummary() {
     ${tSeries ? `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3>${issues.length ? "" : `<p class="note">현재 경보가 없습니다.</p>`}${hourStrip(tSeries, today.bucket, t.users)}</div>
     <div class="card glass"><h3>${ic("chart")}오늘 접속자 추이</h3>${chart([{ vals: ySeries || [], cls: "s2", name: "어제" }, { vals: tSeries, cls: "s1", name: "오늘" }], { ticks: dayTicks(today), time: slotTime(today.bucket), unit: "명" })}${legend([["c1", "오늘"], ["c2", "어제"]])}</div>` : `<div class="card glass"><h3>${ic("clock")}시간별 접속자</h3><p class="note">추이를 불러오는 중입니다. 수집기를 다시 시작한 직후라면 몇 분 걸립니다.</p></div>`}
     <div class="tiles">
-      ${tile("server", "서버", `${num(t.servers_on)}<span class="sub">/${num(t.servers)}</span>`, `주의 ${num(t.warn)} · 이상 ${num(t.bad)}`)}
-      ${tile("gauge", "FPS 평균 (일반)", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`)}
-      ${zones.length ? `<div class="tile glass rank wide"><div class="k">${ic("server")}바다의끝 · 죽음의바다</div><ul>${zones.map(([z, v]) => `<li data-zone="${z}"><span class="rn zn">${ZONE_KO[z]}</span><span class="rs">${num(v.servers_on)}/${num(v.servers)}대 · ${num(v.users)}명</span><b>${num(v.fps_avg, 0)}fps</b></li>`).join("")}</ul></div>` : ""}
-      ${rankTile("gauge", "FPS 낮은 서버", gs, (s) => s.fps, 1, "asc", "")}
-      ${rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%")}
-      ${rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%")}
-      ${tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`)}
-      ${mqs.length ? tile("db", "메시지 큐", `<span class="mq-${mqWorst}">${esc(MQ_KO[mqWorst] || "-")}</span>`, mqs.map((b) => `${esc(b.machine)} ${b.probe_ms == null ? "" : `${num(b.probe_ms)}ms · `}자동 재시작 ${esc(MQ_AUTO_KO[b.autorestart === "HOLD" && b.armed === 0 ? "UNARMED" : b.autorestart] || b.autorestart || "-")}`).join("<br>") + ` · 알림 24시간 ${num(mqAlarm.length)}건`) : ""}
+      ${pairTiles([
+        tile("server", "서버", `${num(t.servers_on)}<span class="sub">/${num(t.servers)}</span>`, `주의 ${num(t.warn)} · 이상 ${num(t.bad)}`),
+        tile("gauge", "FPS 평균 (일반)", num(t.fps_avg, 1), `최저 ${num(t.fps_min, 1)}`, fpsPos == null ? "" : `<div class="meter"><i style="left:${fpsPos}%"></i></div>`),
+        zones.length ? `<div class="tile glass rank wide"><div class="k">${ic("server")}바다의끝 · 죽음의바다</div><ul>${zones.map(([z, v]) => `<li data-zone="${z}"><span class="rn zn">${ZONE_KO[z]}</span><span class="rs">${num(v.servers_on)}/${num(v.servers)}대 · ${num(v.users)}명</span><b>${num(v.fps_avg, 0)}fps</b></li>`).join("")}</ul></div>` : "",
+        rankTile("gauge", "FPS 낮은 서버", gs, (s) => s.fps, 1, "asc", ""),
+        rankTile("chip", "CPU 5분 평균", gs, (s) => lastOf(today, s.svid, "cpu"), 0, "desc", "%"),
+        rankTile("db", "DB 대기 비중 (D)", gs, (s) => s.wusd && s.wusd.d, 1, "desc", "%"),
+        tile("server", "장비", num(t.machines), `주의 ${num(t.machines_warn)}${memTop ? ` · 메모리 최고 ${esc(memTop.name)} ${num(memTop.pct, 0)}%` : ""}`),
+        mqs.length ? tile("db", "메시지 큐", `<span class="mq-${mqWorst}">${esc(MQ_KO[mqWorst] || "-")}</span>`, mqs.map((b) => `${esc(b.machine)} ${b.probe_ms == null ? "" : `${num(b.probe_ms)}ms · `}자동 재시작 ${esc(MQ_AUTO_KO[b.autorestart === "HOLD" && b.armed === 0 ? "UNARMED" : b.autorestart] || b.autorestart || "-")}`).join("<br>") + ` · 알림 24시간 ${num(mqAlarm.length)}건`) : "",
+      ])}
     </div>
     <div class="foot">${recall(NAME_KEY) ? `<span class="muted">${esc(recall(NAME_KEY))}</span> · ` : ""}<button class="link" data-act="forget">이 기기에서 토큰 지우기</button>${acc.off ? `<p class="muted">${esc(acc.off)}</p>` : ""}</div>`;
 }
