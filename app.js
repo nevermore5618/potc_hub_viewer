@@ -184,13 +184,14 @@ function serverLevel(s) {
   const f = s.flags || [];
   if (s.type === "GS" && MAINT.has(s.cond)) return "maint";
   if (s.state === "off" || f.some((x) => BAD_FLAGS[x])) return "bad";
-  if (f.some((x) => WARN_FLAGS[x]) || (s.type === "GS" && s.fps != null && s.fps < 30)) return "warn";
+  if (s.loading || f.some((x) => WARN_FLAGS[x]) || (s.type === "GS" && s.fps != null && s.fps < 30)) return "warn";
   return "ok";
 }
 
 function serverIssues(s) {
   const out = (s.flags || []).map((x) => BAD_FLAGS[x] || WARN_FLAGS[x] || x);
   if (s.state === "off" && !out.length) out.push("꺼짐");
+  if (s.loading) out.push("로딩 중");
   if (s.type === "GS" && s.fps != null && s.fps < 30) out.push(`FPS ${num(s.fps, 1)}`);
   return out;
 }
