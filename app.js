@@ -13,7 +13,7 @@ const WARN_FLAGS = { high_dispatch: "처리 대기 적체" };
 const MACHINE_FLAGS = { cpu: "CPU 95%+", net: "네트워크 95%+", mem: "메모리 부족", drive: "디스크 부족", stale: "정보 끊김" };
 const LEVEL_KO = { ok: "정상", warn: "주의", bad: "이상", maint: "점검", gap: "서버 정보 받는 중" };
 const SEV_KO = { err: "오류", warn: "경고", ok: "복구", info: "정보" };
-const KIND_KO = { incident: "경보 분석", daily_report: "일일 리포트", log_summary: "로그 요약", alarm_triage: "알람 분류" };
+const KIND_KO = { incident: "경보 분석", daily_report: "일일 리포트", log_summary: "로그 요약", alarm_triage: "알람 분류", chat_trend: "채팅 동향", gamelog_trend: "게임 로그 변화" };
 const STAT_KO = { pending: "대기", running: "분석 중", done: "완료", failed: "실패", skipped: "건너뜀" };
 const ASK_KO = { accepted: "분석 시작", exists: "1시간 안에 같은 대상 리포트 있음", off: "분석이 꺼져 있음", budget: "예산 정지선 초과",
   denied: "요청 권한 없음", stale: "30분 넘게 지나 받지 않음", invalid: "잘못된 요청" };
@@ -615,7 +615,7 @@ const reportTitle = (x) => (x.kind === "incident" ? (x.subjects || []).map((s) =
 function renderReports() {
   const R = state.reports;
   if (!R) return `<div class="empty">리포트를 불러오는 중입니다</div>`;
-  const chips = [["all", "전체"], ["incident", "경보 분석"], ["daily_report", "일일"], ["log_summary", "로그 요약"], ["alarm_triage", "알람 분류"]]
+  const chips = [["all", "전체"], ["incident", "경보 분석"], ["daily_report", "일일"], ["log_summary", "로그 요약"], ["chat_trend", "채팅"], ["gamelog_trend", "게임 로그"], ["alarm_triage", "알람 분류"]]
     .map(([v, l]) => `<button data-rkf="${v}" class="${state.rkf === v ? "on" : ""}">${l}</button>`).join("");
   const now = Date.now() / 1000;
   const mine = (R.requests || []).filter((r) => r.fp === acc.fp && now - r.ts < 86400).slice(-5).reverse();
