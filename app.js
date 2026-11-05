@@ -590,9 +590,22 @@ function canAsk() {
   return !!(r && acc.fp && (r.analyzers || []).includes(acc.fp) && state.now && state.now.access_issue);
 }
 
+function uiDialog({ title, body, ok = "확인", cancel = "취소", danger = false }) {
+  return new Promise((done) => {
+    let el = $("dlg");
+    if (!el) { el = document.createElement("div"); el.id = "dlg"; el.className = "dlg"; document.body.appendChild(el); }
+    el.innerHTML = `<div class="box glass" role="alertdialog" aria-modal="true">${title ? `<h3>${esc(title)}</h3>` : ""}${body ? `<p>${esc(body)}</p>` : ""}` +
+      `<div class="btns">${cancel ? `<button data-v="0">${esc(cancel)}</button>` : ""}<button data-v="1" class="${danger ? "danger" : "ok"}">${esc(ok)}</button></div></div>`;
+    el.hidden = false;
+    const end = (v) => { el.hidden = true; el.innerHTML = ""; done(v); };
+    el.onclick = (e) => { const b = e.target.closest("button[data-v]"); if (b) end(b.dataset.v === "1"); else if (e.target === el) end(false); };
+  });
+}
+
 async function askAnalyze(e) {
   if (!e || !canAsk()) return;
-  if (!confirm(`이 이벤트를 AI 경보 분석에 넘길까요?\n\n${e.server} · ${mdhm(e.ep)}\n${String(e.msg || "").slice(0, 120)}\n\n수집기가 1분 안에 받아 시작하고, 결과는 리포트 탭에 나옵니다.`)) return;
+  if (!(await uiDialog({ title: "AI 경보 분석에 넘길까요?", ok: "분석 요청",
+    body: `${e.server} · ${mdhm(e.ep)}\n${String(e.msg || "").slice(0, 120)}\n\n수집기가 1분 안에 받아 시작하고, 결과는 리포트 탭에 나옵니다.` }))) return;
   const item = { source: "event", ep: e.ep, svid: e.svid, sev: e.sev, code: e.code, server: e.server, msg: e.msg };
   const body = "potc-analyze " + JSON.stringify({ v: 1, fp: acc.fp, name: recall(NAME_KEY), dev: devName(), item });
   const base = `${API}/repos/${CFG.owner}/${CFG.repo}`;
@@ -607,7 +620,7 @@ async function askAnalyze(e) {
     render();
     window.scrollTo(0, 0);
   } catch (err) {
-    alert(`요청을 보내지 못했습니다: ${err.message}`);
+    await uiDialog({ title: "요청을 보내지 못했습니다", body: err.message, cancel: null });
   }
 }
 
@@ -908,10 +921,11 @@ function bind() {
     const row = e.target.closest("[data-svid]");
     if (row) return openDetail(row.dataset.svid);
     if (e.target.closest('[data-act="forget"]')) {
-      if (confirm("이 기기에 저장된 토큰을 지울까요? 다시 보려면 토큰을 새로 입력해야 합니다.")) {
+      uiDialog({ title: "이 기기에 저장된 토큰을 지울까요?", body: "다시 보려면 토큰을 새로 입력해야 합니다.", ok: "지우기", danger: true }).then((yes) => {
+        if (!yes) return;
         accSync(true, true); accReset(); acc.fp = null;
         store(TOKEN_KEY, null); store(CACHE_KEY, null); store(TREND_CACHE_KEY, null); showLogin("");
-      }
+      });
       return;
     }
     const chip = e.target.closest("[data-evf]");

@@ -243,4 +243,13 @@ main { padding: 8px 16px 0; }
 .demo .foot { display: none; }
 html.demo { scrollbar-width: none; }
 html.demo::-webkit-scrollbar { width: 0; height: 0; }
+.dlg { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.38); }
+.dlg[hidden] { display: none; }
+.dlg .box { width: min(320px, 100%); border-radius: var(--radius); padding: 20px 16px 14px; background: rgba(28, 38, 60, 0.72); }
+.dlg h3 { margin: 0 0 6px; font-size: 18px; font-weight: 600; text-align: center; }
+.dlg p { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; white-space: pre-line; overflow-wrap: anywhere; }
+.dlg .btns { display: flex; gap: 8px; }
+.dlg .btns button { flex: 1; padding: 11px; border-radius: 14px; border: 1px solid var(--glass-edge); background: var(--glass); font-weight: 700; font-size: 15px; cursor: pointer; }
+.dlg .btns .ok { background: #fff; color: #1b2a44; border-color: #fff; }
+.dlg .btns .danger { background: var(--bad); color: #2a0606; border-color: transparent; }
 .mq-bad, .mq-restart { color: var(--bad); } .mq-stale { color: var(--warn); } .mq-off { color: var(--muted); }
