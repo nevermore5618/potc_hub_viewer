@@ -3,6 +3,8 @@
 const CFG = window.MON_CFG || {};
 const API = (CFG.api || "https://api.github.com").replace(/\/$/, "");
 const TOKEN_KEY = "potc.live.token";
+const EXP_WARN_DAYS = 3;
+const RENEW_NOTE = "회사 PC에서 허브 오른쪽 위 폰 버튼 → 토큰 신청으로 새 토큰을 받아 주세요.";
 const CACHE_KEY = "potc.live.now";
 const POLL_MS = Math.max(5, CFG.poll || 15) * 1000;
 const FETCH_TIMEOUT_MS = 15000;
@@ -174,7 +176,7 @@ async function load(file) {
     state.rlUntil = (parseInt(r.headers.get("X-RateLimit-Reset") || "0", 10) * 1000) || Date.now() + 300000;
     throw new Error(`요청 한도 초과, ${hhmm(state.rlUntil / 1000)} 이후 재개`);
   }
-  if (r.status === 401) throw new AuthError("토큰이 맞지 않거나 만료됐습니다.");
+  if (r.status === 401) throw new AuthError(`토큰이 맞지 않거나 기한이 지났습니다. ${RENEW_NOTE}`);
   if (r.status === 404 || r.status === 403) throw new AuthError("이 토큰으로 데이터 저장소를 읽을 수 없습니다.");
   if (!r.ok) throw new Error(`${file}: HTTP ${r.status}`);
   return r.json();
@@ -860,8 +862,20 @@ function updateAge() {
     else if (!msg && ageLive > 90) msg = `수집기 데이터가 ${Math.round(ageLive / 60)}분 전 것입니다.`;
     else if (!msg && now.collector && now.collector.quiet) msg = "수집기 조용한 시간대(09:00-09:45)라 갱신이 느릴 수 있습니다.";
   }
+  if (!msg) msg = expiryNote();
   banner.hidden = !msg;
   banner.textContent = msg;
+}
+
+function expiryNote() {
+  const exp = acc.fp && state.now && (state.now.token_exp || {})[acc.fp];
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(exp || "");
+  if (!m) return "";
+  const left = Math.round((new Date(+m[1], m[2] - 1, +m[3]) - new Date().setHours(0, 0, 0, 0)) / 86400000);
+  if (left > EXP_WARN_DAYS) return "";
+  const day = `${+m[2]}/${+m[3]}`;
+  if (left < 0) return `이 토큰은 ${day}에 기한이 지났습니다. ${RENEW_NOTE}`;
+  return `이 토큰은 ${left > 1 ? `${left}일 뒤(${day})` : left ? `내일(${day})` : `오늘(${day})`} 만료됩니다. ${RENEW_NOTE}`;
 }
 
 async function fetchFile(key, file) {
@@ -901,8 +915,8 @@ async function tick(force) {
 }
 
 function showLogin(msg) {
+  if ($("login").hidden) $("who").value = recall(NAME_KEY);
   $("login").hidden = false;
-  $("who").value = recall(NAME_KEY);
   $("tokMsg").textContent = msg || "";
 }
 
