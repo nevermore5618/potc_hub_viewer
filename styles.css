@@ -39,6 +39,7 @@ body {
   padding: env(safe-area-inset-top) 0 calc(104px + env(safe-area-inset-bottom));
   -webkit-text-size-adjust: 100%;
   -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
 }
 button { font: inherit; color: inherit; touch-action: manipulation; }
 input, select { font-size: 16px; }
@@ -232,14 +233,25 @@ main { padding: 8px 16px 0; }
 .rep:first-child { border-top: 0; padding-top: 0; }
 .rep .h { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; font-size: 14px; }
 .rep .tg { font-size: 13px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
-.rep .ld { font-size: 14px; margin-top: 3px; overflow-wrap: anywhere; }
+.rep .ld { font-size: 14px; margin-top: 3px; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .md { font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }
 .md h4 { font-size: 16px; margin: 14px 0 6px; } .md h5 { font-size: 15px; margin: 12px 0 4px; color: var(--muted); }
 .md h4:first-child, .md h5:first-child, .md p:first-child { margin-top: 0; }
 .md p { margin: 0 0 8px; } .md ul, .md ol { margin: 0 0 8px; padding-left: 20px; } .md li { margin: 2px 0; }
 .md code { font: 13px ui-monospace, Menlo, monospace; background: rgba(0, 0, 0, 0.22); padding: 1px 4px; border-radius: 5px; }
-.md .tbl { overflow-x: auto; margin: 0 0 10px; } .md table { border-collapse: collapse; font-size: 13px; }
-.md th, .md td { border-bottom: 1px solid var(--line); padding: 4px 8px 4px 0; text-align: left; vertical-align: top; }
+.md .tbl { overflow-x: auto; margin: 0 0 12px; } .md table { border-collapse: collapse; font-size: 13px; }
+.md th, .md td { border-bottom: 1px solid var(--line); padding: 5px 12px 5px 0; text-align: left; vertical-align: top; white-space: nowrap; overflow-wrap: normal; }
+.md th { color: var(--muted); font-weight: 600; }
+.md .trows { margin: 2px 0 12px; }
+.md .trow { padding: 10px 0; border-top: 1px solid var(--line); }
+.md .trow:first-child { border-top: 0; padding-top: 2px; }
+.md .trow i { font-style: normal; color: var(--muted); font-size: 12px; font-weight: 600; margin-right: 6px; }
+.md .trow .tt { font-weight: 700; font-size: 15px; }
+.md .trow .tf { margin-top: 3px; font-size: 14px; line-height: 1.5; display: flex; flex-wrap: wrap; column-gap: 14px; }
+.md .trow .tf > span { min-width: 0; }
+.md .callout { margin: 0 0 10px; padding: 8px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.12); font-size: 14px; }
+.sheet main { padding: 8px 12px 0; }
+.sheet .card { padding: 12px 14px 14px; }
 .demo .foot { display: none; }
 html.demo { scrollbar-width: none; }
 html.demo::-webkit-scrollbar { width: 0; height: 0; }

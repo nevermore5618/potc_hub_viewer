@@ -15,7 +15,8 @@ const WARN_FLAGS = { high_dispatch: "처리 대기 적체" };
 const MACHINE_FLAGS = { cpu: "CPU 95%+", net: "네트워크 95%+", mem: "메모리 부족", drive: "디스크 부족", stale: "정보 끊김" };
 const LEVEL_KO = { ok: "정상", warn: "주의", bad: "이상", maint: "점검", gap: "서버 정보 받는 중" };
 const SEV_KO = { err: "오류", warn: "경고", ok: "복구", info: "정보" };
-const KIND_KO = { incident: "경보 분석", daily_report: "일일 리포트", log_summary: "로그 요약", alarm_triage: "알람 분류", chat_trend: "동향", gamelog_trend: "게임 로그 변화" };
+const KIND_KO = { incident: "경보 분석", daily_report: "일일 리포트", log_summary: "로그 요약", alarm_triage: "알람 분류", chat_trend: "동향", gamelog_trend: "게임 로그 변화",
+  crash_code: "크래시 코드 분석" };
 const STAT_KO = { pending: "대기", running: "분석 중", done: "완료", failed: "실패", skipped: "건너뜀" };
 const ASK_KO = { accepted: "분석 시작", exists: "1시간 안에 같은 대상 리포트 있음", off: "분석이 꺼져 있음", budget: "예산 정지선 초과",
   denied: "요청 권한 없음", stale: "30분 넘게 지나 받지 않음", invalid: "잘못된 요청" };
@@ -38,9 +39,40 @@ const pad = (n) => String(n).padStart(2, "0");
 const hhmm = (ep) => { if (!ep) return "-"; const d = new Date(ep * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const mdhm = (ep) => { if (!ep) return "-"; const d = new Date(ep * 1000); return `${d.getMonth() + 1}/${d.getDate()} ${hhmm(ep)}`; };
 
+const BR = /<br\s*\/?>/gi;
+const textW = (s) => {
+  let w = 0;
+  for (const ch of String(s).replace(/\*\*|`/g, "")) w += ch.charCodeAt(0) > 0x2e7f ? 13.5 : /[A-Z0-9%#@]/.test(ch) ? 8.2 : ch === " " ? 3.6 : 7;
+  return w;
+};
+const lineW = (s) => Math.max(0, ...String(s || "").split(BR).map(textW));
+
+function mdTable(rows, inl) {
+  const head = rows[0], body = rows.slice(1), n = head.length;
+  const colW = head.map((h, i) => Math.max(textW(h), ...body.map((r) => lineW(r[i]))) + 12);
+  const avail = Math.max(240, (window.innerWidth || 375) - 64);
+  if (!body.length || colW.reduce((a, b) => a + b, 0) <= avail) {
+    return `<div class="tbl"><table>${rows.map((r, k) => `<tr>${head.map((_, i) => (k ? `<td>${inl(r[i] || "")}</td>` : `<th>${inl(r[i] || "")}</th>`)).join("")}</tr>`).join("")}</table></div>`;
+  }
+  const empty = (v) => !v || v === "-";
+  const card = (r) => {
+    const lines = [];
+    head.slice(1).forEach((h, k) => {
+      const v = String(r[k + 1] || "").trim();
+      if (empty(v)) return;
+      const f = `<span><i>${inl(h)}</i>${inl(v)}</span>`, short = textW(h) + lineW(v) + 20 <= avail - 40 && !/<br\s*\/?>/i.test(v);
+      const last = lines[lines.length - 1];
+      if (short && last && last.short) last.parts.push(f);
+      else lines.push({ short, parts: [f] });
+    });
+    return `<div class="trow"><div class="tt"><i>${inl(head[0])}</i>${inl(r[0] || "-")}</div>${lines.map((l) => `<div class="tf">${l.parts.join("")}</div>`).join("")}</div>`;
+  };
+  return `<div class="trows">${body.map(card).join("")}</div>`;
+}
+
 function md(src) {
-  const lines = String(src || "").replace(/\t/g, "    ").split(/\r?\n/), out = [];
-  const inl = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  const lines = String(src || "").replace(/\s*\[\[[co]:[\d,\s]*(\]\])?/g, "").replace(/\t/g, "    ").split(/\r?\n/), out = [];
+  const inl = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>").replace(/&lt;br\s*\/?&gt;/gi, "<br>");
   const LI = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
   for (let i = 0; i < lines.length;) {
     const l = lines[i];
@@ -48,8 +80,13 @@ function md(src) {
       const rows = [];
       while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++].trim());
       const cells = (r) => r.replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
-      const body = rows.filter((r) => !/^\|[\s:\-|]+\|?$/.test(r)).map(cells);
-      out.push(`<div class="tbl"><table>${body.map((r, k) => `<tr>${r.map((c) => (k ? `<td>${inl(c)}</td>` : `<th>${inl(c)}</th>`)).join("")}</tr>`).join("")}</table></div>`);
+      out.push(mdTable(rows.filter((r) => !/^\|[\s:\-|]+\|?$/.test(r)).map(cells), inl));
+      continue;
+    }
+    if (/^\s*>/.test(l)) {
+      const q = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])) q.push(lines[i++].replace(/^\s*>\s?/, ""));
+      out.push(`<div class="callout">${q.map(inl).join("<br>")}</div>`);
       continue;
     }
     if (LI.test(l)) {
@@ -76,7 +113,7 @@ function md(src) {
     else if (l.trim() && !/^\s*(---|\*\*\*)\s*$/.test(l)) {
       const para = [l.trim()];
       i++;
-      while (i < lines.length && lines[i].trim() && !LI.test(lines[i]) && !/^\s*\||^#{1,4}\s/.test(lines[i])) para.push(lines[i++].trim());
+      while (i < lines.length && lines[i].trim() && !LI.test(lines[i]) && !/^\s*[|>]|^#{1,4}\s/.test(lines[i])) para.push(lines[i++].trim());
       out.push(`<p>${para.map(inl).join("<br>")}</p>`);
       continue;
     }
@@ -448,7 +485,7 @@ function renderSummary() {
   const hidden = incHidden();
   const incidents = (now.incidents || []).filter((x) => !hidden.includes(x.id)).map((x) => `<li class="sw" data-swid="${x.id}">${SW_DEL}<div class="sw-row"><span class="muted">${hhmm(x.created)}</span>
       <span>${esc(x.conclusion || (x.status === "done" ? "결론 없음" : "분석 중"))}
-      <span class="sub">${esc((x.subjects || []).map((s) => s.target).join(", "))}</span></span></div></li>`).join("");
+      <span class="sub">${esc(subjLine(x.subjects))}</span></span></div></li>`).join("");
   const fpsPos = t.fps_min == null ? null : Math.max(0, Math.min(100, (t.fps_min / 150) * 100));
   const tile = (icon, k, v, sub, extra = "") => `<div class="tile glass"><div class="k">${ic(icon)}${esc(k)}</div><div class="v">${v}</div>${extra}<div class="s">${sub}</div></div>`;
   return `
@@ -626,12 +663,17 @@ async function askAnalyze(e) {
   }
 }
 
-const reportTitle = (x) => (x.kind === "incident" ? (x.subjects || []).map((s) => s.target).join(", ") || "경보" : KIND_KO[x.kind] || x.kind);
+const subjLine = (subs) => {
+  const t = (subs || []).map((s) => s.target).filter(Boolean);
+  return t.length > 2 ? `${t.slice(0, 2).join(", ")} 외 ${t.length - 2}건` : t.join(", ");
+};
+const reportTitle = (x) => (x.kind === "incident" ? subjLine(x.subjects) || "경보" : KIND_KO[x.kind] || x.kind);
 
 function renderReports() {
   const R = state.reports;
   if (!R) return `<div class="empty">리포트를 불러오는 중입니다</div>`;
-  const chips = [["all", "전체"], ["incident", "경보 분석"], ["daily_report", "일일"], ["log_summary", "로그 요약"], ["chat_trend", "동향"], ["gamelog_trend", "게임 로그"], ["alarm_triage", "알람 분류"]]
+  const chips = [["all", "전체"], ["incident", "경보 분석"], ["daily_report", "일일"], ["log_summary", "로그 요약"], ["chat_trend", "동향"], ["gamelog_trend", "게임 로그"],
+    ["crash_code", "크래시 코드"], ["alarm_triage", "알람 분류"]]
     .map(([v, l]) => `<button data-rkf="${v}" class="${state.rkf === v ? "on" : ""}">${l}</button>`).join("");
   const now = Date.now() / 1000;
   const mine = (R.requests || []).filter((r) => r.fp === acc.fp && now - r.ts < 86400).slice(-5).reverse();
@@ -639,16 +681,17 @@ function renderReports() {
   const reqRows = waiting.map((a) => `<li><span class="tag t-maint">보냄</span><span>${esc(a.what)}<span class="sub">수집기 확인 대기 · ${hhmm(a.ts)}</span></span></li>`)
     .concat(mine.map((r) => `<li${r.job ? ` data-rep="${r.job}"` : ""}><span class="tag t-${r.result === "accepted" || r.result === "exists" ? "ok" : "warn"}">${esc(ASK_KO[r.result] || r.result)}</span>
       <span>${esc(r.what || "")}<span class="sub">${hhmm(r.ts)}${r.job ? ` · 작업 #${r.job}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}</span></span></li>`)).join("");
-  const list = (R.reports || []).filter((x) => state.rkf === "all" || x.kind === state.rkf);
+  const list = (R.reports || []).filter((x) => (state.rkf === "all" ? x.kind !== "alarm_triage" : x.kind === state.rkf));
   const rows = list.map((x) => {
     const st = x.status === "done" ? "" : `<span class="tag t-${x.status === "failed" ? "bad" : "maint"}">${esc(STAT_KO[x.status] || x.status)}</span>`;
     const org = x.origin === "manual" ? `<span class="tag">요청</span>` : x.origin === "chain" ? `<span class="tag">알람에서</span>` : "";
     const rep = x.repeat ? `<span class="tag t-warn">${x.repeat}회째</span>` : "";
     const by = (x.subjects || []).map((s) => s.by).filter(Boolean)[0];
-    const lead = x.conclusion || (x.md ? String(x.md).split(/\n/).map((l) => l.replace(/^[#>*\-\s|]+/, "").trim()).find((l) => l.length > 8) : "") || x.error || "";
+    const lead = String(x.conclusion || (x.md ? String(x.md).split(/\n/).map((l) => l.replace(/^[#>*\-\s|]+/, "").trim()).find((l) => l.length > 8) : "") || x.error || "")
+      .replace(/\*\*|`/g, "");
     return `<div class="rep" data-rep="${x.id}"><div class="h"><span class="muted">${mdhm(x.created)}</span><b>${esc(KIND_KO[x.kind] || x.kind)}</b>${org}${rep}${st}</div>
       ${x.kind === "incident" ? `<div class="tg">${esc(reportTitle(x))}${by ? ` · ${esc(by)}` : ""}</div>` : ""}
-      <div class="ld">${esc(String(lead).slice(0, 160))}</div></div>`;
+      <div class="ld">${esc(lead.slice(0, 320))}</div></div>`;
   }).join("");
   const off = R.on === false || R.mode === "off" ? `<p class="note">경보 분석이 꺼져 있습니다.</p>` : "";
   return `${reqRows ? `<div class="card glass"><h3>${ic("spark")}내 분석 요청</h3><ul class="list">${reqRows}</ul></div>` : ""}
@@ -662,7 +705,8 @@ function renderReport() {
   if (!x) { sheet.hidden = true; state.report = null; return; }
   const meta = [mdhm(x.created), x.model ? String(x.model).replace(/^claude-/, "") : "", x.cost != null ? `$${Number(x.cost).toFixed(3)}` : "", `작업 #${x.id}`].filter(Boolean).join(" · ");
   const subs = (x.subjects || []).map((s) => `<li><span class="tag">${esc(s.kind_ko || "")}</span><span>${esc(s.target)}${s.by ? `<span class="sub">요청 ${esc(s.by)}</span>` : ""}</span></li>`).join("");
-  const body = x.status === "done" ? (x.md ? `<div class="md">${md(x.md)}</div>` : `<div class="sub">본문 없음</div>`)
+  const body = x.status === "done" ? (x.md ? `<div class="md">${md(x.md)}</div>`
+    : x.conclusion ? `<div class="md">${md(x.conclusion)}</div><p class="sub">코드가 든 본문은 PC 허브에서 봅니다.</p>` : `<div class="sub">본문 없음</div>`)
     : `<p class="note">${esc(STAT_KO[x.status] || x.status)}${x.error ? ` · ${esc(x.error)}` : ""}</p>`;
   sheet.innerHTML = `
     <header class="top"><button id="back" class="round glass" aria-label="뒤로"><svg class="ic" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg></button>
