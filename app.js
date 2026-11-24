@@ -680,7 +680,7 @@ function renderReports() {
   const waiting = state.asks.filter((a) => now - a.ts < ASK_WAIT_SEC && !(R.requests || []).some((r) => r.id === a.id));
   const reqRows = waiting.map((a) => `<li><span class="tag t-maint">보냄</span><span>${esc(a.what)}<span class="sub">수집기 확인 대기 · ${hhmm(a.ts)}</span></span></li>`)
     .concat(mine.map((r) => `<li${r.job ? ` data-rep="${r.job}"` : ""}><span class="tag t-${r.result === "accepted" || r.result === "exists" ? "ok" : "warn"}">${esc(ASK_KO[r.result] || r.result)}</span>
-      <span>${esc(r.what || "")}<span class="sub">${hhmm(r.ts)}${r.job ? ` · 작업 #${r.job}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}</span></span></li>`)).join("");
+      <span>${esc(r.what || "")}<span class="sub">${hhmm(r.ts)}${r.job ? ` · HR-${r.job}` : ""}${r.error ? ` · ${esc(r.error)}` : ""}</span></span></li>`)).join("");
   const list = (R.reports || []).filter((x) => (state.rkf === "all" ? x.kind !== "alarm_triage" : x.kind === state.rkf));
   const rows = list.map((x) => {
     const st = x.status === "done" ? "" : `<span class="tag t-${x.status === "failed" ? "bad" : "maint"}">${esc(STAT_KO[x.status] || x.status)}</span>`;
@@ -703,7 +703,7 @@ function renderReport() {
   const x = ((state.reports && state.reports.reports) || []).find((r) => String(r.id) === String(state.report));
   const sheet = $("sheet");
   if (!x) { sheet.hidden = true; state.report = null; return; }
-  const meta = [mdhm(x.created), x.model ? String(x.model).replace(/^claude-/, "") : "", x.cost != null ? `$${Number(x.cost).toFixed(3)}` : "", `작업 #${x.id}`].filter(Boolean).join(" · ");
+  const meta = [mdhm(x.created), x.model ? String(x.model).replace(/^claude-/, "") : "", x.cost != null ? `$${Number(x.cost).toFixed(3)}` : "", `HR-${x.id}`].filter(Boolean).join(" · ");
   const subs = (x.subjects || []).map((s) => `<li><span class="tag">${esc(s.kind_ko || "")}</span><span>${esc(s.target)}${s.by ? `<span class="sub">요청 ${esc(s.by)}</span>` : ""}</span></li>`).join("");
   const body = x.status === "done" ? (x.md ? `<div class="md">${md(x.md)}</div>`
     : x.conclusion ? `<div class="md">${md(x.conclusion)}</div><p class="sub">코드가 든 본문은 PC 허브에서 봅니다.</p>` : `<div class="sub">본문 없음</div>`)
